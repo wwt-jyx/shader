@@ -26,6 +26,7 @@ void Model::collectVertexAttributes(const Value& attributes, const Value& access
 
         if(l.type == ARRAY_VERTEX)
         {
+
             float* position_data = new float[l.e_count*l.e_num];
             std::memcpy(position_data, l.data_ptr, l.e_count*l.e_num*l.e_size);
             for(int j=0;j<l.e_count*l.e_num;j++)
@@ -33,40 +34,12 @@ void Model::collectVertexAttributes(const Value& attributes, const Value& access
 //                if(j<10) printf("%02f ",position_data[j]);
                 primitive.vertex_pos.push_back(position_data[j]);
             }
-            printf("ok\n");
+
         }
-
-
-
 
         layouts.push_back(l);
     }
 
-//
-//    vbLayout = Layout(layouts);//数据没变，重新整理了下偏移量？？strip整理成了数据总长
-//    //如果没有ARRAY_TANGENT则添加
-//    if (!vbLayout.Find(ARRAY_TANGENT)) {
-//        vbLayout.emplace_back(ARRAY_TANGENT, GL_FLOAT, 4, 4, true);
-//        vbLayout.Find(ARRAY_TANGENT)->valid = false;
-//    }
-//    uint32_t compatStrip = vbLayout.strip();
-//    // copy from bin buffer
-//    //拷贝所有数据到vertexBuffer
-//    char* vertexBuffer = new char[vbLayout.strip()*vertexNum];
-//    for (int i = 0; i < layouts.size(); i++) {
-//        auto& l = layouts[i];
-//        if (l.data_ptr == nullptr)
-//            continue;
-//        uint32_t offset = vbLayout[i].offset;
-//        for (int j = 0; j < vertexNum; j++) {
-//            // here l.strip is the one from the original buffer, NOT the vertex buffer
-//            //这里的l.strip是来自原始缓冲区的，而不是顶点缓冲区
-//            char* src = (char*)l.data_ptr + j * l.strip;
-//            char* dst = vertexBuffer + j * compatStrip + offset;
-//            std::memcpy(dst, src, l.e_count*l.e_size);
-//        }
-//    }
-//    return vertexBuffer;
 }
 
 void Model::layoutFromAccessor(LayoutItem& l, const Value& accessor, const Value& bufferViews) {
@@ -92,7 +65,7 @@ void Model::layoutFromAccessor(LayoutItem& l, const Value& accessor, const Value
 
 //    std::cout<<"buffer_array[bufferView[\"buffer\"].GetUint()]: " <<  &(buffer_array[bufferView["buffer"].GetUint()])<<"\n" ;
 //    l.data_ptr = (char*)&(buffer_array[bufferView["buffer"].GetUint()]) + offset;
-    std::cout<<(void*)buffer_array[bufferView["buffer"].GetUint()]<<"\n";
+//    std::cout<<(void*)buffer_array[bufferView["buffer"].GetUint()]<<"\n";
     l.data_ptr = buffer_array[bufferView["buffer"].GetUint()] + offset;
 //    std::cout<<"offset:"<<offset<<"\n";
 //    std::cout<<"data_ptr:"<<l.data_ptr<<"\n";
@@ -239,7 +212,7 @@ void Model::AddMesh(const Value& node, glm::mat4 curr_mesh2obj,
 //                std::memcpy(index_data, buffer_array[indexLayout.buffer_indx], indexLayout.e_size*indexLayout.e_count*index_count);
                 for(int j=0;j<indexLayout.e_count*index_count;j++)
                 {
-                    if(j<10) printf("%d ",index_data[j]);
+//                    if(j<10) printf("%d ",index_data[j]);
                     primitive.indices.push_back(index_data[j]);
                 }
             }
@@ -257,10 +230,11 @@ void Model::AddMesh(const Value& node, glm::mat4 curr_mesh2obj,
             }
             //新增一个primitive
             primitives.push_back(primitive);
+
+
         }
         //新增一个mesh,mesh带有primitives
         Mesh m(primitives,curr_mesh2obj);
-
         meshes.push_back(m);
 //            Primitive3D* p = new Primitive3D(rtms, meshes, Transform(curr_mesh2obj));
 //            primitives.push_back(p);
@@ -316,15 +290,78 @@ void Model::loadModel(string const &path){
         char* bin_data = new char[byteLength];
         fbuffer.read(bin_data, byteLength);
         buffer_array.push_back(bin_data);
-        std::cout<<"bin_data: " <<  (void*)&bin_data  <<"\n";
-        std::cout<<"bin_data: " <<  (void*)(buffer_array[0])  <<"\n";
+//        std::cout<<"bin_data: " <<  (void*)&bin_data  <<"\n";
+//        std::cout<<"bin_data: " <<  (void*)(buffer_array[0])  <<"\n";
 
     }
+    //texture
+    if(d.HasMember("textures")){
+        const Value& textures_json = d["textures"];
+        for (int i = 0; i < textures_json.Size(); i++){
+            int img_idx = textures_json[i]["source"].GetInt();
+            std::string img_path = directory + '/' + d["images"][img_idx]["uri"].GetString();
+            int width, height, nrChannels;
+            Texture tex(stbi_load(img_path.c_str(), &width, &height, &nrChannels, 0));
+            tex.width=width;
+            tex.height=height;
+            tex.nrChannels=nrChannels;
+            texture_array.push_back(tex);
+        }
+    }
 
+    //materials
+    std::vector<Material> material_array;
+    if(d.HasMember("materials")){
+        const Value& materials_json = d["materials"];
+        for(int i=0;i<materials_json.Size();i++){
+            Material m;
+            const Value& material_json = materials_json[i];
 
+            //pbrMetallicRoughness
+            const Value& pbr_json = material_json["pbrMetallicRoughness"];
+            if(pbr_json.HasMember("baseColorFactor")){
+                for(int j=0;j<4;j++)
+                    m.baseColorFactor[j]=pbr_json["baseColorFactor"][j].GetFloat();
+            }
+            if(pbr_json.HasMember("metallicFactor")){
+                m.metallicFactor = pbr_json["metallicFactor"].GetFloat();
+            }
+            if(pbr_json.HasMember("roughnessFactor")){
+                m.metallicFactor = pbr_json["roughnessFactor"].GetFloat();
+            }
+            if(pbr_json.HasMember("baseColorTexture")){
+                m.baseColorTexture = texture_array[pbr_json["baseColorTexture"]["index"].GetInt()];
+                std::cout<<m.baseColorTexture.height<<" "<<m.baseColorTexture.width<<" "<<m.baseColorTexture.nrChannels<<"\n";
+            }
+            if(pbr_json.HasMember("metallicRoughnessTexture")){
+                m.metallicRoughnessTexture = texture_array[pbr_json["metallicRoughnessTexture"]["index"].GetInt()];
+            }
 
-
-
+            //other
+            if(material_json.HasMember("normalTexture")){
+                m.normalTexture = texture_array[material_json["normalTexture"]["index"].GetInt()];
+            }
+            if(material_json.HasMember("emissiveFactor")){
+                for(int j=0;j<3;j++){
+                    m.emissiveFactor[j]=material_json["emissiveFactor"][j].GetFloat();
+                }
+            }
+            if(material_json.HasMember("alphaMode")){
+                if(std::string("OPACITY")==material_json["alphaMode"].GetString())
+                    m.alphaMode = 0;
+                else if(std::string("MASK")==material_json["alphaMode"].GetString())
+                    m.alphaMode = 1;
+                else
+                    m.alphaMode = 2;
+            }
+            if(material_json.HasMember("alphaCutoff")){
+                m.alphaCutoff = material_json["alphaCutoff"].GetFloat();
+            }
+            if(material_json.HasMember("doubleSided")){
+                m.doubleSided = material_json["doubleSided"].GetBool();
+            }
+        }
+    }
 
     // nodes
     // only the first scene is parsed

@@ -20,7 +20,7 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
 // camera
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+Camera camera(glm::vec3(150.0f, 225.0f, 225.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -89,28 +89,29 @@ int main()
     Model ourModel("../../data/car/scene.gltf");
 
 
+
     // draw in wireframe
     // 绘制线框
-//    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-
+//    std::cout<<ourModel.meshes[0].primitives[0].VVAO<<"\n";
 
 
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
     {
-        // input
-        //响应键盘输入
-        // -----
-        processInput(window);
-
         // per-frame time logic
         // 计算上下两帧的渲染时间差
         // --------------------
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+        // input
+        //响应键盘输入
+        // -----
+        processInput(window);
 
         // render
         //设置清除颜色
@@ -125,7 +126,7 @@ int main()
 
         // view/projection transformations
         // 视口，投影矩阵
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
         glm::mat4 view = camera.GetViewMatrix();
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
@@ -138,7 +139,6 @@ int main()
 
         ourShader.setMat4("model", model);
         ourModel.Draw(ourShader);
-
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // 检查并调用事件，交换缓冲
@@ -168,13 +168,13 @@ void processInput(GLFWwindow *window)
 
     //WASD移动摄像机
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.ProcessKeyboard(FORWARD, deltaTime);
+        camera.ProcessKeyboard(FORWARD, deltaTime*100);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.ProcessKeyboard(BACKWARD, deltaTime);
+        camera.ProcessKeyboard(BACKWARD, deltaTime*100);
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.ProcessKeyboard(LEFT, deltaTime);
+        camera.ProcessKeyboard(LEFT, deltaTime*100);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.ProcessKeyboard(RIGHT, deltaTime);
+        camera.ProcessKeyboard(RIGHT, deltaTime*100);
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

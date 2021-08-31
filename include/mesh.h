@@ -119,10 +119,6 @@ enum ElementType {
     FLOAT = 5126
 };
 
-
-
-
-
 struct Vertex {
     // position
     glm::vec3 Position;
@@ -137,9 +133,10 @@ struct Vertex {
 };
 
 struct Texture {
-    unsigned int id;
-    string type;
-    string path;
+    unsigned char *image;
+    int width, height, nrChannels;
+    Texture(){};
+    Texture(unsigned char *image):image(image){};
 };
 
 class Material{
@@ -148,13 +145,13 @@ public:
     glm::vec4 baseColorFactor;  //default: [1,1,1,1]
     float metallicFactor;   //金属感强度 default: 1
     float roughnessFactor;  //粗糙感强度 default: 1
-    unsigned char *baseColorTexture;
+    Texture baseColorTexture;
 
-    unsigned char *metallicRoughnessTexture;
-    unsigned char *normalTexture;
+    Texture metallicRoughnessTexture;
+    Texture normalTexture;
     glm::vec3 emissiveFactor;  //自发光强度 default: [0,0,0]
 
-    int alphaMode;
+    int alphaMode;//0:OPAQUE 完全不透明  1:MASK  2:BLEND
     float alphaCutoff;//MASK模式中,如果小于alphaCutoff的值则为完全透明，否则为完全不透明
     bool doubleSided;//是否为双面贴图
 
@@ -169,92 +166,67 @@ public:
         glm::vec3 temp_e(1.0,1.0,1.0);
         emissiveFactor = temp_e;
 
-        alphaMode = 0;//0:OPAQUE 完全不透明  1:MASK  2:BLEND
+        alphaMode = 0;
         alphaCutoff = 0.5;
         doubleSided = false;
     }
 };
 
 struct Primitive{
+public:
     Material material;         //材质
     GLenum mode;               //mode属性的值为0表示点，4表示三角形
     LayoutItem index;          //index的数据存储状态
     bool haveIndex = false;
     vector<LayoutItem> layouts;//attributes
-
+    unsigned int VAO;
 
     vector<float> vertex_pos;
     vector<unsigned int> indices;
 
-
-
-
     void setupPrimitive()
     {
+
         // create buffers/arrays
         // 创建 VBO 顶点缓冲对象 VAO顶点数组对象 EBO索引缓冲对象
         glGenVertexArrays(1, &VAO);
         glGenBuffers(1, &VBO);
         glGenBuffers(1, &EBO);
 
-        printf("%d\n",vertex_pos.size());
         glBindVertexArray(VAO);
 
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferData(GL_ARRAY_BUFFER,vertex_pos.size()*sizeof(float),&vertex_pos[0],GL_STATIC_DRAW);
 
-
-        if(true){
+        if(haveIndex){
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER,indices.size()*sizeof(unsigned int),&indices[0], GL_STATIC_DRAW);
-//            unsigned int* index_data = new unsigned int[index.e_count*index.e_num];
-//            std::memcpy(index_data, index.data_ptr, index.e_size*index.e_count*index.e_num);
-//
-//            for(int j=0;j<index.e_num;j++){
-//                printf("%d ",index_data[j]);
-//                if((j+1)%3==0) printf("\n");
-//            }
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER,index.e_size*index.e_count*index.e_num,index.data_ptr, GL_STATIC_DRAW);
         }
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(0);
 
-        // 复制顶点索引到缓冲内存中
-//        if(true){
-//            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-//            glBufferData(GL_ELEMENT_ARRAY_BUFFER,index.GetByteLength(),index.data_ptr, GL_STATIC_DRAW);
-//            printf("ok\n");
-//        }
-//        // 复制顶点数据到缓冲内存中
-
-
-        printf("primitive:%d\n",VAO);
-
-
-//        for(auto it = layouts.begin();it!=layouts.end();it++)
-//        {
-//            if(it->type==ARRAY_VERTEX){
-////                glBufferData(GL_ARRAY_BUFFER,it->GetByteLength(),it->data_ptr,GL_STATIC_DRAW);
-//                std::cout<<(void*)(it->data_ptr)<<"\n";
-//                std::cout<<(void*)(it->buffer_ptr)<<"\n";
-//                std::cout<<vertex_pos.size()<<"\n";
-//                std::cout<<it->GetByteLength()<<"\n";
-//                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (const void*)0);
-//                glEnableVertexAttribArray(0);
-//            }
-//        }
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        //先假定只有一个buffer
+        glBufferData(GL_ARRAY_BUFFER,layouts[0].buffer_byteLength,layouts[0].buffer_ptr,GL_STATIC_DRAW);
 
 
 
+        printf("primitive:%u\n",VAO);
+
+
+        for(auto it = layouts.begin();it!=layouts.end();it++)
+        {
+            //POSITION
+            if(it->type==ARRAY_VERTEX){
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, it->strip, (const void*)it->offset);
+                glEnableVertexAttribArray(0);
+            }
+            //
+        }
         glBindVertexArray(0);
-
 
     }
 
-    void Draw(Shader shader)
+    void Draw(Shader &shader)
     {
         // draw mesh
-        glBindVertexArray(1);
-//        printf("%d\n",VAO);
+        glBindVertexArray(VAO);
 //        glDrawArrays(GL_TRIANGLES, 0, vertex_pos.size());
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
@@ -262,14 +234,9 @@ struct Primitive{
         // always good practice to set everything back to defaults once configured.
 //        glActiveTexture(GL_TEXTURE0);
     }
-
-
 private:
     // render data
-    unsigned int VAO, VBO, EBO;
-
-
-
+    unsigned int VBO, EBO;
 
 
 };
@@ -283,7 +250,6 @@ public:
     vector<Vertex>       vertices;
     vector<unsigned int> indices;
     vector<Texture> textures;
-    unsigned int VAO;
 
 
     Material material;
@@ -293,10 +259,12 @@ public:
 
     Mesh(vector<Primitive> primitives,glm::mat4 transform_mat) : primitives(primitives),transform_mat(transform_mat)
     {
-        for(int i = 0;i<primitives.size();i++)
+        this->primitives=primitives;
+        for(int i = 0;i<this->primitives.size();i++)
         {
-            primitives[i].setupPrimitive();
+            this->primitives[i].setupPrimitive();
         }
+
     };
 
     // constructor
@@ -319,54 +287,11 @@ public:
 
 private:
     // render data
-    unsigned int VBO, EBO;
 
     // initializes all the buffer objects/arrays
     void setupMesh()
     {
-        // create buffers/arrays
-        // 创建 VBO 顶点缓冲对象 VAO顶点数组对象 EBO索引缓冲对象
-        glGenVertexArrays(1, &VAO);
-        glGenBuffers(1, &VBO);
-        glGenBuffers(1, &EBO);
 
-        glBindVertexArray(VAO);
-        // load data into vertex buffers
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        // A great thing about structs is that their memory layout is sequential for all its items.
-        // The effect is that we can simply pass a pointer to the struct and it translates perfectly to a glm::vec3/2 array which
-        // again translates to 3/2 floats which translates to a byte array.
-        // 复制顶点数据到缓冲内存中
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
-
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-        // 复制顶点索引到缓冲内存中
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
-
-        // set the vertex attribute pointers
-        // vertex Positions
-        //链接顶点属性，设置顶点属性指针
-        //顶点位置 0 vec3
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-        // vertex normals
-        //顶点法线坐标 1 vec3
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
-        // vertex texture coords
-        //顶点UV坐标 2 vec2
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
-        // vertex tangent
-        //顶点切线坐标 3 vec3
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Tangent));
-        // vertex bitangent
-        //顶点副切线坐标 4 vec3
-        glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Bitangent));
-
-        glBindVertexArray(0);
     }
 };
 #endif
