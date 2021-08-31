@@ -185,7 +185,8 @@ void Model::AddMesh(const Value& node, glm::mat4 curr_mesh2obj,
             Primitive primitive;
             //material
             if(primitive_json[j].HasMember("material")){
-//                primitive.material = materials[primitive_json[j]["material"].GetUint()];
+//                printf("%d",primitive_json[j]["material"].GetUint());
+                primitive.material = material_array[primitive_json[j]["material"].GetUint()];
             }
             //mode
             GLenum primitive_mode = GL_TRIANGLES;
@@ -294,23 +295,86 @@ void Model::loadModel(string const &path){
 //        std::cout<<"bin_data: " <<  (void*)(buffer_array[0])  <<"\n";
 
     }
+
+
+
+
+
     //texture
     if(d.HasMember("textures")){
         const Value& textures_json = d["textures"];
         for (int i = 0; i < textures_json.Size(); i++){
+            //加载
             int img_idx = textures_json[i]["source"].GetInt();
+            int sampler_idx = -1;
+            if(textures_json[i].HasMember("sampler")){
+                sampler_idx = textures_json[i]["sampler"].GetInt();
+            }
             std::string img_path = directory + '/' + d["images"][img_idx]["uri"].GetString();
             int width, height, nrChannels;
-            Texture tex(stbi_load(img_path.c_str(), &width, &height, &nrChannels, 0));
+            unsigned char *data = stbi_load(img_path.c_str(), &width, &height, &nrChannels, 0);
+            //创建
+            unsigned int texture;
+            glGenTextures(1, &texture);
+
+            Texture tex(data);
             tex.width=width;
             tex.height=height;
             tex.nrChannels=nrChannels;
+            tex.texture_id=texture;
+
+            if (data)
+            {
+                GLenum format;
+                if (nrChannels == 1)
+                    format = GL_RED;
+                else if (nrChannels == 3)
+                    format = GL_RGB;
+                else if (nrChannels == 4)
+                    format = GL_RGBA;
+                //绑定
+                glBindTexture(GL_TEXTURE_2D, texture);
+                glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+                glGenerateMipmap(GL_TEXTURE_2D);
+
+                //samplers
+                auto minFilter = GL_LINEAR;
+                auto magFilter = GL_LINEAR;
+                auto wrapS = GL_REPEAT;
+                auto wrapT = GL_REPEAT;
+                if(d.HasMember("samplers")&&sampler_idx!=-1){
+                    const Value& sampler_json = d["samplers"][sampler_idx];
+                    if(sampler_json.HasMember("magFilter"))
+                        magFilter = sampler_json["magFilter"].GetUint();
+                    if(sampler_json.HasMember("magFilter"))
+                        magFilter = sampler_json["magFilter"].GetUint();
+                    if(sampler_json.HasMember("magFilter"))
+                        magFilter = sampler_json["magFilter"].GetUint();
+                    if(sampler_json.HasMember("magFilter"))
+                        magFilter = sampler_json["magFilter"].GetUint();
+                }
+
+                // 为当前绑定的纹理对象设置环绕、过滤方式
+                // 坐标轴设置S\T
+                // 放大(Magnify)和缩小(Minify)操作
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
+
+                stbi_image_free(data);
+            }
+            else
+            {
+                std::cout << "Texture failed to load at path: " << path << std::endl;
+                stbi_image_free(data);
+            }
+            printf("texture:%u\n",texture);
             texture_array.push_back(tex);
         }
     }
 
     //materials
-    std::vector<Material> material_array;
     if(d.HasMember("materials")){
         const Value& materials_json = d["materials"];
         for(int i=0;i<materials_json.Size();i++){
@@ -331,7 +395,7 @@ void Model::loadModel(string const &path){
             }
             if(pbr_json.HasMember("baseColorTexture")){
                 m.baseColorTexture = texture_array[pbr_json["baseColorTexture"]["index"].GetInt()];
-                std::cout<<m.baseColorTexture.height<<" "<<m.baseColorTexture.width<<" "<<m.baseColorTexture.nrChannels<<"\n";
+                std::cout<<m.baseColorTexture.texture_id<<" "<<m.baseColorTexture.width<<" "<<m.baseColorTexture.nrChannels<<"\n";
             }
             if(pbr_json.HasMember("metallicRoughnessTexture")){
                 m.metallicRoughnessTexture = texture_array[pbr_json["metallicRoughnessTexture"]["index"].GetInt()];
@@ -360,8 +424,10 @@ void Model::loadModel(string const &path){
             if(material_json.HasMember("doubleSided")){
                 m.doubleSided = material_json["doubleSided"].GetBool();
             }
+            material_array.push_back(m);
         }
     }
+    std::cout<<"size of material_a"<<material_array.size()<<"\n";
 
     // nodes
     // only the first scene is parsed

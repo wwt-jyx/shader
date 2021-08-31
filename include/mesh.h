@@ -133,9 +133,12 @@ struct Vertex {
 };
 
 struct Texture {
+    unsigned int texture_id;
     unsigned char *image;
     int width, height, nrChannels;
-    Texture(){};
+    Texture(){
+        width=0;height=0;
+    };
     Texture(unsigned char *image):image(image){};
 };
 
@@ -214,10 +217,37 @@ public:
         {
             //POSITION
             if(it->type==ARRAY_VERTEX){
-                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, it->strip, (const void*)it->offset);
+                glVertexAttribPointer(0, it->e_count, GL_FLOAT, GL_FALSE, it->strip, (const void*)it->offset);
                 glEnableVertexAttribArray(0);
             }
-            //
+            //NORMAL
+            if(it->type==ARRAY_NORMAL){
+                glVertexAttribPointer(1, it->e_count, GL_FLOAT, GL_FALSE, it->strip, (const void*)it->offset);
+                glEnableVertexAttribArray(1);
+            }
+            //TANGENT
+            if(it->type==ARRAY_TANGENT){
+                glVertexAttribPointer(2, it->e_count, GL_FLOAT, GL_FALSE, it->strip, (const void*)it->offset);
+                glEnableVertexAttribArray(2);
+            }
+            //TEXCOORD_0 ARRAY_TEX_UV
+            if(it->type==ARRAY_TEX_UV){
+                glVertexAttribPointer(3, it->e_count, GL_FLOAT, GL_FALSE, it->strip, (const void*)it->offset);
+                glEnableVertexAttribArray(3);
+
+//                float* position_data = new float[it->e_count*it->e_num];
+//                std::memcpy(position_data, it->data_ptr, it->e_count*it->e_num*it->e_size);
+//                for(int j=0;j<it->e_count*it->e_num;j++)
+//                {
+//                    std::cout<<position_data[j]<<" ";
+//                    if((j+1)%it->e_count==0) printf("\n");
+//                }
+            }
+            //TEXCOORD_1 ARRAY_TEX_UV2
+            if(it->type==ARRAY_TEX_UV2){
+                glVertexAttribPointer(4, it->e_count, GL_FLOAT, GL_FALSE, it->strip, (const void*)it->offset);
+                glEnableVertexAttribArray(4);
+            }
         }
         glBindVertexArray(0);
 
@@ -225,7 +255,16 @@ public:
 
     void Draw(Shader &shader)
     {
+        //生成纹理
+        if(material.baseColorTexture.height!=0)
+        {
+            glActiveTexture(GL_TEXTURE0); // 在绑定纹理之前先激活纹理单元
+            glBindTexture(GL_TEXTURE_2D, material.baseColorTexture.texture_id);
+//            printf("primitive:%u and texture:%u\n",VAO,material.baseColorTexture.texture_id);
+        }
+
         // draw mesh
+        // 绘制网格
         glBindVertexArray(VAO);
 //        glDrawArrays(GL_TRIANGLES, 0, vertex_pos.size());
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);

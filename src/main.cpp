@@ -92,7 +92,7 @@ int main()
 
     // draw in wireframe
     // 绘制线框
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+//    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 //    std::cout<<ourModel.meshes[0].primitives[0].VVAO<<"\n";
 
@@ -116,7 +116,7 @@ int main()
         // render
         //设置清除颜色
         // ------
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         //清空的缓冲位可能有GL_COLOR_BUFFER_BIT，GL_DEPTH_BUFFER_BIT和GL_STENCIL_BUFFER_BIT
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

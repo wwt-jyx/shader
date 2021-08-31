@@ -33,8 +33,8 @@ class Model
 public:
     // model data
     std::vector<Texture> texture_array;	// stores all the textures loaded so far, optimization to make sure textures aren't loaded more than once.
+    std::vector<Material> material_array;
     vector<Mesh>    meshes;
-    std::vector<Material> materials;
     string directory;
     bool gammaCorrection;
     vector<int32_t> buffer_byteLengths;
