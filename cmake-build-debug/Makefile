@@ -182,6 +182,33 @@ Shared/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Shared.dir/build.make CMakeFiles/Shared.dir/build
 .PHONY : Shared/fast
 
+src/GLTFLoader.o: src/GLTFLoader.cpp.o
+
+.PHONY : src/GLTFLoader.o
+
+# target to build an object file
+src/GLTFLoader.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Shared.dir/build.make CMakeFiles/Shared.dir/src/GLTFLoader.cpp.o
+.PHONY : src/GLTFLoader.cpp.o
+
+src/GLTFLoader.i: src/GLTFLoader.cpp.i
+
+.PHONY : src/GLTFLoader.i
+
+# target to preprocess a source file
+src/GLTFLoader.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Shared.dir/build.make CMakeFiles/Shared.dir/src/GLTFLoader.cpp.i
+.PHONY : src/GLTFLoader.cpp.i
+
+src/GLTFLoader.s: src/GLTFLoader.cpp.s
+
+.PHONY : src/GLTFLoader.s
+
+# target to generate assembly for a file
+src/GLTFLoader.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Shared.dir/build.make CMakeFiles/Shared.dir/src/GLTFLoader.cpp.s
+.PHONY : src/GLTFLoader.cpp.s
+
 src/glad.o: src/glad.c.o
 
 .PHONY : src/glad.o
@@ -239,33 +266,6 @@ src/main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Shared.dir/build.make CMakeFiles/Shared.dir/src/main.cpp.s
 .PHONY : src/main.cpp.s
 
-src/model.o: src/model.cpp.o
-
-.PHONY : src/model.o
-
-# target to build an object file
-src/model.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Shared.dir/build.make CMakeFiles/Shared.dir/src/model.cpp.o
-.PHONY : src/model.cpp.o
-
-src/model.i: src/model.cpp.i
-
-.PHONY : src/model.i
-
-# target to preprocess a source file
-src/model.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Shared.dir/build.make CMakeFiles/Shared.dir/src/model.cpp.i
-.PHONY : src/model.cpp.i
-
-src/model.s: src/model.cpp.s
-
-.PHONY : src/model.s
-
-# target to generate assembly for a file
-src/model.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Shared.dir/build.make CMakeFiles/Shared.dir/src/model.cpp.s
-.PHONY : src/model.cpp.s
-
 src/stb_image.o: src/stb_image.cpp.o
 
 .PHONY : src/stb_image.o
@@ -308,15 +308,15 @@ help:
 	@echo "... glad"
 	@echo "... shader"
 	@echo "... stb_image"
+	@echo "... src/GLTFLoader.o"
+	@echo "... src/GLTFLoader.i"
+	@echo "... src/GLTFLoader.s"
 	@echo "... src/glad.o"
 	@echo "... src/glad.i"
 	@echo "... src/glad.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
-	@echo "... src/model.o"
-	@echo "... src/model.i"
-	@echo "... src/model.s"
 	@echo "... src/stb_image.o"
 	@echo "... src/stb_image.i"
 	@echo "... src/stb_image.s"

@@ -238,14 +238,14 @@
 				</MakeCommands>
 			</Target>
 		</Build>
+		<Unit filename="/home/nsy/CLionProjects/shader/src/GLTFLoader.cpp">
+			<Option target="Shared"/>
+		</Unit>
 		<Unit filename="/home/nsy/CLionProjects/shader/src/glad.c">
 			<Option target="glad"/>
 		</Unit>
 		<Unit filename="/home/nsy/CLionProjects/shader/src/main.cpp">
 			<Option target="shader"/>
-			<Option target="Shared"/>
-		</Unit>
-		<Unit filename="/home/nsy/CLionProjects/shader/src/model.cpp">
 			<Option target="Shared"/>
 		</Unit>
 		<Unit filename="/home/nsy/CLionProjects/shader/src/stb_image.cpp">

@@ -6,7 +6,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "shader.h"
-#include "model.h"
+#include "GLTFLoader.h"
 
 #include <iostream>
 
@@ -96,6 +96,12 @@ int main()
 
 //    std::cout<<ourModel.meshes[0].primitives[0].VVAO<<"\n";
 
+    // 分配纹理单元
+    ourShader.use(); // 不要忘记在设置uniform变量之前激活着色器程序！
+    ourShader.setInt("baseColorTexture", 0); // 或者使用着色器类设置
+    ourShader.setInt("metallicRoughnessTexture", 1);
+    ourShader.setInt("normalTexture", 2);
+
 
     // render loop
     // -----------
@@ -126,18 +132,13 @@ int main()
 
         // view/projection transformations
         // 视口，投影矩阵
+        //视野(Field of View) 宽高比 第三和第四个参数设置了平截头体的近和远平面
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
         glm::mat4 view = camera.GetViewMatrix();
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
 
-        // render the loaded model
-        // 模型空间--世界空间矩阵
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f)); // translate it down so it's at the center of the scene
-        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));	// it's a bit too big for our scene, so scale it down
 
-        ourShader.setMat4("model", model);
         ourModel.Draw(ourShader);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)

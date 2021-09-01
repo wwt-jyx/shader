@@ -13,6 +13,6 @@ uniform mat4 projection;
 
 void main()
 {
-    TexCoord_0 = aTexCoord_0;
+    TexCoord_0 = vec2(aTexCoord_0.x,1-aTexCoord_0.y);
     gl_Position = projection * view * model * vec4(aPos, 1.0);
 }

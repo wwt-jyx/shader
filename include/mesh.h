@@ -262,6 +262,18 @@ public:
             glBindTexture(GL_TEXTURE_2D, material.baseColorTexture.texture_id);
 //            printf("primitive:%u and texture:%u\n",VAO,material.baseColorTexture.texture_id);
         }
+        if(material.metallicRoughnessTexture.height!=0)
+        {
+            glActiveTexture(GL_TEXTURE0+1); // 在绑定纹理之前先激活纹理单元
+            glBindTexture(GL_TEXTURE_2D, material.metallicRoughnessTexture.texture_id);
+        }
+        if(material.normalTexture.height!=0)
+        {
+            glActiveTexture(GL_TEXTURE0+2); // 在绑定纹理之前先激活纹理单元
+            glBindTexture(GL_TEXTURE_2D, material.normalTexture.texture_id);
+        }
+
+
 
         // draw mesh
         // 绘制网格
@@ -320,6 +332,10 @@ public:
     // render the mesh
     void Draw(Shader &shader)
     {
+        // render the loaded model
+        // 模型空间--世界空间矩阵
+        shader.setMat4("model",transform_mat);
+
         for(unsigned int i = 0; i < primitives.size(); i++)
             primitives[i].Draw(shader);
     }

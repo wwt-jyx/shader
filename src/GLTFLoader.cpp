@@ -1,4 +1,4 @@
-#include "model.h"
+#include "GLTFLoader.h"
 
 
 
@@ -299,7 +299,6 @@ void Model::loadModel(string const &path){
 
 
 
-
     //texture
     if(d.HasMember("textures")){
         const Value& textures_json = d["textures"];
@@ -310,6 +309,7 @@ void Model::loadModel(string const &path){
             if(textures_json[i].HasMember("sampler")){
                 sampler_idx = textures_json[i]["sampler"].GetInt();
             }
+
             std::string img_path = directory + '/' + d["images"][img_idx]["uri"].GetString();
             int width, height, nrChannels;
             unsigned char *data = stbi_load(img_path.c_str(), &width, &height, &nrChannels, 0);
