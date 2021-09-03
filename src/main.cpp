@@ -29,6 +29,8 @@ bool firstMouse = true;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
+glm::vec3 lightPos(200.0f, 0.0f, 0.0f);
+
 int main()
 {
     // glfw: initialize and configure
@@ -82,23 +84,94 @@ int main()
 
     // build and compile shaders
     // -------------------------
-    Shader ourShader("../../src/test.vs", "../../src/test.fs");
+    Shader ourShader("../../src/phong.vs", "../../src/phong.fs");
 
     // load models
     // -----------
     Model ourModel("../../data/car/scene.gltf");
+
+    //lightCubeShader
+    Shader lightCubeShader("../../src/light.vs", "../../src/light.fs");
+    //灯的立方体顶点初始化
+    float vertices[] = {
+            -0.5f, -0.5f, -0.5f,
+            0.5f, -0.5f, -0.5f,
+            0.5f,  0.5f, -0.5f,
+            0.5f,  0.5f, -0.5f,
+            -0.5f,  0.5f, -0.5f,
+            -0.5f, -0.5f, -0.5f,
+
+            -0.5f, -0.5f,  0.5f,
+            0.5f, -0.5f,  0.5f,
+            0.5f,  0.5f,  0.5f,
+            0.5f,  0.5f,  0.5f,
+            -0.5f,  0.5f,  0.5f,
+            -0.5f, -0.5f,  0.5f,
+
+            -0.5f,  0.5f,  0.5f,
+            -0.5f,  0.5f, -0.5f,
+            -0.5f, -0.5f, -0.5f,
+            -0.5f, -0.5f, -0.5f,
+            -0.5f, -0.5f,  0.5f,
+            -0.5f,  0.5f,  0.5f,
+
+            0.5f,  0.5f,  0.5f,
+            0.5f,  0.5f, -0.5f,
+            0.5f, -0.5f, -0.5f,
+            0.5f, -0.5f, -0.5f,
+            0.5f, -0.5f,  0.5f,
+            0.5f,  0.5f,  0.5f,
+
+            -0.5f, -0.5f, -0.5f,
+            0.5f, -0.5f, -0.5f,
+            0.5f, -0.5f,  0.5f,
+            0.5f, -0.5f,  0.5f,
+            -0.5f, -0.5f,  0.5f,
+            -0.5f, -0.5f, -0.5f,
+
+            -0.5f,  0.5f, -0.5f,
+            0.5f,  0.5f, -0.5f,
+            0.5f,  0.5f,  0.5f,
+            0.5f,  0.5f,  0.5f,
+            -0.5f,  0.5f,  0.5f,
+            -0.5f,  0.5f, -0.5f,
+    };
+
+    unsigned int lightVAO,lightVBO;
+    glGenVertexArrays(1, &lightVAO);
+    glGenBuffers(1, &lightVBO);
+
+    glBindVertexArray(lightVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, lightVBO);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices,GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
+
+
+
+
+
+
+
 
 
 
     // draw in wireframe
     // 绘制线框
 //    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    // positions of the point lights
 
-//    std::cout<<ourModel.meshes[0].primitives[0].VVAO<<"\n";
+    glm::vec3 pointLightPositions[] = {
+            glm::vec3( 0.7f,  0.2f,  302.0f),
+            glm::vec3( 102.3f, -3.3f, -4.0f),
+            glm::vec3(-4.0f,  252.0f, -12.0f)
+    };
 
     // 分配纹理单元
     ourShader.use(); // 不要忘记在设置uniform变量之前激活着色器程序！
-    ourShader.setInt("baseColorTexture", 0); // 或者使用着色器类设置
+    ourShader.setInt("material.baseColorTexture", 0); // 或者使用着色器类设置
     ourShader.setInt("metallicRoughnessTexture", 1);
     ourShader.setInt("normalTexture", 2);
 
@@ -126,9 +199,77 @@ int main()
         //清空的缓冲位可能有GL_COLOR_BUFFER_BIT，GL_DEPTH_BUFFER_BIT和GL_STENCIL_BUFFER_BIT
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+
+
+
         // don't forget to enable shader before setting uniforms
-        //激活链接程序，激活着色器，开始渲染
+        // be sure to activate shader when setting uniforms/drawing objects
+        //激活链接程序，激活着色器
         ourShader.use();
+        ourShader.setVec3("viewPos", camera.Position);
+
+
+        //材质
+        ourShader.setVec3("material.ambient",  1.0f, 1.0f, 1.0f);
+        ourShader.setVec3("material.diffuse",  1.0f, 1.0f, 1.0f);
+        ourShader.setVec3("material.specular", 1.0f, 1.0f, 1.0f);
+        ourShader.setFloat("material.shininess", 32.0f);
+
+        /*
+           Here we set all the uniforms for the 5/6 types of lights we have. We have to set them manually and index
+           the proper PointLight struct in the array to set each uniform variable. This can be done more code-friendly
+           by defining light types as classes and set their values in there, or by using a more efficient uniform approach
+           by using 'Uniform buffer objects', but that is something we'll discuss in the 'Advanced GLSL' tutorial.
+        */
+        // directional light
+        ourShader.setVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
+        ourShader.setVec3("dirLight.ambient", 0.05f, 0.05f, 0.05f);
+        ourShader.setVec3("dirLight.diffuse", 0.4f, 0.4f, 0.4f);
+        ourShader.setVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
+        // point light 1
+        ourShader.setVec3("pointLights[0].position", pointLightPositions[0]);
+        ourShader.setVec3("pointLights[0].ambient", 0.05f, 0.05f, 0.05f);
+        ourShader.setVec3("pointLights[0].diffuse", 0.8f, 0.8f, 0.8f);
+        ourShader.setVec3("pointLights[0].specular", 1.0f, 1.0f, 1.0f);
+        ourShader.setFloat("pointLights[0].constant", 1.0f);
+        ourShader.setFloat("pointLights[0].linear", 0.09);
+        ourShader.setFloat("pointLights[0].quadratic", 0.032);
+        // point light 2
+        ourShader.setVec3("pointLights[1].position", pointLightPositions[1]);
+        ourShader.setVec3("pointLights[1].ambient", 0.05f, 0.05f, 0.05f);
+        ourShader.setVec3("pointLights[1].diffuse", 0.8f, 0.8f, 0.8f);
+        ourShader.setVec3("pointLights[1].specular", 1.0f, 1.0f, 1.0f);
+        ourShader.setFloat("pointLights[1].constant", 1.0f);
+        ourShader.setFloat("pointLights[1].linear", 0.09);
+        ourShader.setFloat("pointLights[1].quadratic", 0.032);
+        // point light 3
+        ourShader.setVec3("pointLights[2].position", pointLightPositions[2]);
+        ourShader.setVec3("pointLights[2].ambient", 0.05f, 0.05f, 0.05f);
+        ourShader.setVec3("pointLights[2].diffuse", 0.8f, 0.8f, 0.8f);
+        ourShader.setVec3("pointLights[2].specular", 1.0f, 1.0f, 1.0f);
+        ourShader.setFloat("pointLights[2].constant", 1.0f);
+        ourShader.setFloat("pointLights[2].linear", 0.09);
+        ourShader.setFloat("pointLights[2].quadratic", 0.032);
+
+        // spotLight
+        ourShader.setVec3("spotLight.position", camera.Position);
+        ourShader.setVec3("spotLight.direction", camera.Front);
+        ourShader.setVec3("spotLight.ambient", 0.0f, 0.0f, 0.0f);
+        ourShader.setVec3("spotLight.diffuse", 1.0f, 1.0f, 1.0f);
+        ourShader.setVec3("spotLight.specular", 1.0f, 1.0f, 1.0f);
+        ourShader.setFloat("spotLight.constant", 1.0f);
+        ourShader.setFloat("spotLight.linear", 0.09);
+        ourShader.setFloat("spotLight.quadratic", 0.032);
+        ourShader.setFloat("spotLight.cutOff", glm::cos(glm::radians(12.5f)));
+        ourShader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(15.0f)));
+
+        //hemisphereLight
+        ourShader.setVec3("hemisphereLight.skyColor",  1.0f, 1.0f, 1.0f);
+        ourShader.setVec3("hemisphereLight.groundColor", 0.0f, 0.0f, 0.0f);
+        ourShader.setFloat("hemisphereLight.skyIntensity", 0.8f);
+        ourShader.setFloat("hemisphereLight.groundIntensity", 0.2f);
+        ourShader.setVec3("hemisphereLight.direction", 0.0f, -1.0f, 0.0f);
+
 
         // view/projection transformations
         // 视口，投影矩阵
@@ -138,8 +279,27 @@ int main()
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
 
-
+        //渲染
         ourModel.Draw(ourShader);
+
+        // also draw the lamp object(s)
+        //绘制光源
+        lightCubeShader.use();
+        lightCubeShader.setMat4("projection", projection);
+        lightCubeShader.setMat4("view", view);
+
+
+        glBindVertexArray(lightVAO);
+        for (unsigned int i = 0; i < 4; i++)
+        {
+            //光源位置
+            glm::mat4 lightModel = glm::mat4(1.0f);
+            lightModel = glm::translate(lightModel,pointLightPositions[i]);
+            lightModel = glm::scale(lightModel, glm::vec3(10.2f));
+            lightCubeShader.setMat4("model", lightModel);
+//            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+        glBindVertexArray(0);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // 检查并调用事件，交换缓冲

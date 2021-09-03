@@ -1,0 +1,4 @@
+#ifndef SHADER_LIGHT_H
+#define SHADER_LIGHT_H
+
+#endif //SHADER_LIGHT_H
