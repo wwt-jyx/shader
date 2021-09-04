@@ -257,6 +257,8 @@ void Model::loadModel(string const &path){
     int dirStart = path.find_last_of('/');
     directory = path.substr(0, dirStart);
 
+//    stbi_set_flip_vertically_on_load(true);
+
     //打开文件
     std::ifstream gltfFile(path);
     if(!gltfFile){

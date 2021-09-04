@@ -14,7 +14,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
-
+unsigned int loadCubemap(vector<std::string> faces);
 // settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -85,13 +85,17 @@ int main()
     // build and compile shaders
     // -------------------------
     Shader ourShader("../../src/phong.vs", "../../src/phong.fs");
-    Shader screenShader("../../src/screen_cube.vs", "../../src/screen_cube.fs");
-    // load models
+        // load models
     // -----------
     Model ourModel("../../data/car/scene.gltf");
 
+    //frame screenShader
+    Shader screenShader("../../src/screen_cube.vs", "../../src/screen_cube.fs");
     //lightCubeShader
     Shader lightCubeShader("../../src/light.vs", "../../src/light.fs");
+    //skyboxShader
+    Shader skyboxShader("../../src/skybox.vs", "../../src/skybox.fs");
+
     //灯的立方体顶点初始化
     float vertices[] = {
             -0.5f, -0.5f, -0.5f,
@@ -156,6 +160,50 @@ int main()
             1.0f, -1.0f,  1.0f, 0.0f,
             1.0f,  1.0f,  1.0f, 1.0f
     };
+    float skyboxVertices[] = {
+            // positions
+            -1.0f,  1.0f, -1.0f,
+            -1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+            1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+
+            -1.0f, -1.0f,  1.0f,
+            -1.0f, -1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,
+
+            1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+
+            -1.0f, -1.0f,  1.0f,
+            -1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f, -1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,
+
+            -1.0f,  1.0f, -1.0f,
+            1.0f,  1.0f, -1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            -1.0f,  1.0f,  1.0f,
+            -1.0f,  1.0f, -1.0f,
+
+            -1.0f, -1.0f, -1.0f,
+            -1.0f, -1.0f,  1.0f,
+            1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+            -1.0f, -1.0f,  1.0f,
+            1.0f, -1.0f,  1.0f
+    };
     //lightcube VAO
     unsigned int lightVAO,lightVBO;
     glGenVertexArrays(1, &lightVAO);
@@ -188,12 +236,29 @@ int main()
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    //skyboxVertices VAO
+    unsigned int skyboxVAO,skyboxVBO;
+    glGenVertexArrays(1,&skyboxVAO);
+    glGenBuffers(1,&skyboxVBO);
+    glBindVertexArray(skyboxVAO);
+    glBindBuffer(GL_ARRAY_BUFFER,skyboxVBO);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(skyboxVertices),&skyboxVertices,GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
 
 
 
-
-
+    vector<std::string> faces
+    {
+        "right.jpg",
+        "left.jpg",
+        "bottom.jpg",
+        "top.jpg",
+        "front.jpg",
+        "back.jpg"
+    };
+    unsigned int skyboxTexture = loadCubemap(faces);
 
 
     // draw in wireframe
@@ -266,7 +331,7 @@ int main()
         // -----
         processInput(window);
 
-        //////////////////////////////////////////////////
+        //////////////////////////////////////////////////帧缓冲渲染
         // 第一处理阶段(Pass)
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 //        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -280,6 +345,9 @@ int main()
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         //清空的缓冲位可能有GL_COLOR_BUFFER_BIT，GL_DEPTH_BUFFER_BIT和GL_STENCIL_BUFFER_BIT
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+
+
 
         // don't forget to enable shader before setting uniforms
         // be sure to activate shader when setting uniforms/drawing objects
@@ -358,11 +426,13 @@ int main()
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
 
-        //渲染
+
+        //渲染主体
+        glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
         ourModel.Draw(ourShader);
 
         // also draw the lamp object(s)
-        //绘制光源
+        //渲染光源
         lightCubeShader.use();
         lightCubeShader.setMat4("projection", projection);
         lightCubeShader.setMat4("view", view);
@@ -377,6 +447,16 @@ int main()
 //            glDrawArrays(GL_TRIANGLES, 0, 36);
         }
         glBindVertexArray(0);
+
+        //渲染skybox
+        glDepthFunc(GL_LEQUAL);
+        skyboxShader.use();
+        skyboxShader.setMat4("projection", glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f));
+        skyboxShader.setMat4("view", glm::mat4(glm::mat3(camera.GetViewMatrix())));
+        glBindVertexArray(skyboxVAO);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glDepthFunc(GL_LESS);
 
         // 第二处理阶段
         glBindFramebuffer(GL_FRAMEBUFFER, 0); // 返回默认
@@ -467,4 +547,37 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     camera.ProcessMouseScroll(yoffset);
+}
+
+unsigned int loadCubemap(vector<std::string> faces)
+{
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+    int width, height, nrChannels;
+    for (unsigned int i = 0; i < faces.size(); i++)
+    {
+        std::string img_path = "../../data/skybox/" + faces[i];
+        unsigned char *data = stbi_load(img_path.c_str(), &width, &height, &nrChannels, 0);
+        if (data)
+        {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                         0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data
+            );
+            stbi_image_free(data);
+        }
+        else
+        {
+            std::cout << "Cubemap texture failed to load at path: " << faces[i] << std::endl;
+            stbi_image_free(data);
+        }
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    return textureID;
 }

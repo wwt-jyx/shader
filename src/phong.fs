@@ -79,6 +79,8 @@ vec3 CalcHemisphereLight(HemisphereLight light, vec3 normal, vec3 fragPos, vec3 
 uniform sampler2D metallicRoughnessTexture;
 uniform sampler2D normalTexture;
 
+uniform samplerCube skybox;
+
 uniform int alphaMode;
 uniform vec3 lightColor;
 uniform vec3 lightPos;
@@ -98,16 +100,24 @@ void main()
     // 第一阶段：定向光照
     result += CalcDirLight(dirLight, norm, viewDir);
     // 第二阶段：点光源
-    for(int i = 0; i < NR_POINT_LIGHTS; i++)
-        result += CalcPointLight(pointLights[i], norm, FragPos, viewDir);
+//     for(int i = 0; i < NR_POINT_LIGHTS; i++)
+//         result += CalcPointLight(pointLights[i], norm, FragPos, viewDir);
     // 第三阶段：聚光
-    result += CalcSpotLight(spotLight, norm, FragPos, viewDir);
+//     result += CalcSpotLight(spotLight, norm, FragPos, viewDir);
     // 第四阶段：半球光
     result += CalcHemisphereLight(hemisphereLight, norm, FragPos, viewDir);
 
-//     FragColor = vec4(vec3(1.0 - result), 1.0); //反相
+//     //反射
+//     vec3 I = normalize(FragPos - viewPos);
+//     vec3 R = reflect(I, norm);
+//     vec4 reflectColor = vec4(texture(skybox, R).rgb, 1.0);
+//
+//     //折射
+//     float ratio = 1.00 / 1.52;
+//     vec3 Rr = refract(I, norm, ratio);
+//     vec4 refractColor = vec4(texture(skybox, Rr).rgb, 1.0);
 
-    FragColor = vec4(result, 1.0);
+    FragColor = vec4(result,1.0);
 }
 
 vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
