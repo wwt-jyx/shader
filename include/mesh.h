@@ -272,6 +272,7 @@ public:
             glActiveTexture(GL_TEXTURE0+2); // 在绑定纹理之前先激活纹理单元
             glBindTexture(GL_TEXTURE_2D, material.normalTexture.texture_id);
         }
+        shader.setInt("alphaMode",material.alphaMode);
 
 
 

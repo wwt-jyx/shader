@@ -411,12 +411,12 @@ void Model::loadModel(string const &path){
                 }
             }
             if(material_json.HasMember("alphaMode")){
-                if(std::string("OPACITY")==material_json["alphaMode"].GetString())
-                    m.alphaMode = 0;
+                if(std::string("BLEND")==material_json["alphaMode"].GetString())
+                    m.alphaMode = 2;
                 else if(std::string("MASK")==material_json["alphaMode"].GetString())
                     m.alphaMode = 1;
                 else
-                    m.alphaMode = 2;
+                    m.alphaMode = 0;
             }
             if(material_json.HasMember("alphaCutoff")){
                 m.alphaCutoff = material_json["alphaCutoff"].GetFloat();
