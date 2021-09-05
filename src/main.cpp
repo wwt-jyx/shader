@@ -96,6 +96,22 @@ int main()
     //skyboxShader
     Shader skyboxShader("../../src/skybox.vs", "../../src/skybox.fs");
 
+    //Uniform块设置绑定点
+    unsigned int uniformBlockIndexLight   = glGetUniformBlockIndex(lightCubeShader.ID, "Matrices");
+    unsigned int uniformBlockIndexSkybox  = glGetUniformBlockIndex(skyboxShader.ID, "Matrices");
+    unsigned int uniformBlockIndexShader   = glGetUniformBlockIndex(ourShader.ID, "Matrices");
+    glUniformBlockBinding(lightCubeShader.ID,    uniformBlockIndexLight, 0);
+    glUniformBlockBinding(skyboxShader.ID,  uniformBlockIndexSkybox, 0);
+    glUniformBlockBinding(ourShader.ID,   uniformBlockIndexShader, 0);
+
+    //创建Uniform缓冲对象本身，并将其绑定到绑定点
+    unsigned int uboMatrices;
+    glGenBuffers(1, &uboMatrices);
+    glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+    glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), NULL, GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    glBindBufferRange(GL_UNIFORM_BUFFER, 0, uboMatrices, 0, 2 * sizeof(glm::mat4));
+
     //灯的立方体顶点初始化
     float vertices[] = {
             -0.5f, -0.5f, -0.5f,
@@ -283,6 +299,10 @@ int main()
     screenShader.use();
     screenShader.setInt("screenTexture",0);
 
+
+
+
+
 ////////////////////////////////////////////////////////////帧缓冲
     //创建一个帧缓冲对象，并绑定它
     unsigned int framebuffer;
@@ -423,8 +443,12 @@ int main()
         //视野(Field of View) 宽高比 第三和第四个参数设置了平截头体的近和远平面
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
         glm::mat4 view = camera.GetViewMatrix();
-        ourShader.setMat4("projection", projection);
-        ourShader.setMat4("view", view);
+
+        //填充Uniform缓冲
+        glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 
         //渲染主体
@@ -434,8 +458,6 @@ int main()
         // also draw the lamp object(s)
         //渲染光源
         lightCubeShader.use();
-        lightCubeShader.setMat4("projection", projection);
-        lightCubeShader.setMat4("view", view);
         glBindVertexArray(lightVAO);
         for (unsigned int i = 0; i < 4; i++)
         {
@@ -451,8 +473,12 @@ int main()
         //渲染skybox
         glDepthFunc(GL_LEQUAL);
         skyboxShader.use();
-        skyboxShader.setMat4("projection", glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f));
-        skyboxShader.setMat4("view", glm::mat4(glm::mat3(camera.GetViewMatrix())));
+
+        view =  glm::mat4(glm::mat3(camera.GetViewMatrix()));
+        glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
         glBindVertexArray(skyboxVAO);
         glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
         glDrawArrays(GL_TRIANGLES, 0, 36);
