@@ -4,7 +4,7 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 uniform sampler2D screenTexture;
-
+uniform sampler2D bloomBlur;
 
 const float offset = 1.0 / 300.0;
 vec2 offsets[9] = vec2[](
@@ -21,7 +21,23 @@ vec2 offsets[9] = vec2[](
 
 void main()
 {
-    FragColor = texture(screenTexture, TexCoords);
+    vec3 hdrColor = texture(screenTexture, TexCoords).rgb;
+    vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
+    hdrColor += bloomColor; // additive blending
+    // Reinhard色调映射
+//     vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
+    // 曝光色调映射
+//     float exposure=1.0;
+//     vec3 mapped = vec3(1.0) - exp(-hdrColor * exposure);
+
+    FragColor = vec4( hdrColor, 1.0);
+
+    //gamma校正
+//     vec3 fragColor = vec3(texture(screenTexture, TexCoords));
+//     float gamma = 1;
+//     FragColor.rgb = pow(fragColor.rgb, vec3(1.0/gamma));
+
+
 
     //反相
 //     FragColor = vec4(vec3(1.0 - texture(screenTexture, TexCoords)), 1.0);

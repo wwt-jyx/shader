@@ -30,7 +30,8 @@ float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
 glm::vec3 lightPos(200.0f, 0.0f, 0.0f);
-
+bool blinn = false;
+bool blinnKeyPressed = false;
 int main()
 {
     // glfw: initialize and configure
@@ -95,14 +96,23 @@ int main()
     Shader lightCubeShader("../../src/light.vs", "../../src/light.fs");
     //skyboxShader
     Shader skyboxShader("../../src/skybox.vs", "../../src/skybox.fs");
+    //normalDisplayShader
+    Shader normalDisplayShader("../../src/normalDisplay.vs", "../../src/normalDisplay.fs","../../src/normalDisplay.gs");
+    //floorShader
+    Shader floorShader("../../src/floor.vs", "../../src/floor.fs");
+    //blurShader
+    Shader blurShader("../../src/GaussianBlur.vs", "../../src/GaussianBlur.fs");
+
 
     //Uniform块设置绑定点
     unsigned int uniformBlockIndexLight   = glGetUniformBlockIndex(lightCubeShader.ID, "Matrices");
     unsigned int uniformBlockIndexSkybox  = glGetUniformBlockIndex(skyboxShader.ID, "Matrices");
     unsigned int uniformBlockIndexShader   = glGetUniformBlockIndex(ourShader.ID, "Matrices");
+    unsigned int uniformBlockIndexNormal   = glGetUniformBlockIndex(normalDisplayShader.ID, "Matrices");
     glUniformBlockBinding(lightCubeShader.ID,    uniformBlockIndexLight, 0);
     glUniformBlockBinding(skyboxShader.ID,  uniformBlockIndexSkybox, 0);
     glUniformBlockBinding(ourShader.ID,   uniformBlockIndexShader, 0);
+    glUniformBlockBinding(normalDisplayShader.ID,   uniformBlockIndexNormal, 0);
 
     //创建Uniform缓冲对象本身，并将其绑定到绑定点
     unsigned int uboMatrices;
@@ -158,13 +168,13 @@ int main()
     };
     float planeVertices[] = {
             // positions          // texture Coords
-            5.0f, -0.5f,  5.0f,  2.0f, 0.0f,
-            -5.0f, -0.5f,  5.0f,  0.0f, 0.0f,
-            -5.0f, -0.5f, -5.0f,  0.0f, 2.0f,
+            2005.0f, -0.5f,  2005.0f,  2.0f, 0.0f,
+            -2005.0f, -0.5f,  2005.0f,  0.0f, 0.0f,
+            -2005.0f, -0.5f, -2005.0f,  0.0f, 2.0f,
 
-            5.0f, -0.5f,  5.0f,  2.0f, 0.0f,
-            -5.0f, -0.5f, -5.0f,  0.0f, 2.0f,
-            5.0f, -0.5f, -5.0f,  2.0f, 2.0f
+            2005.0f, -0.5f,  2005.0f,  2.0f, 0.0f,
+            -2005.0f, -0.5f, -2005.0f,  0.0f, 2.0f,
+            2005.0f, -0.5f, -2005.0f,  2.0f, 2.0f
     };
     float quadVertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
             // positions   // texCoords
@@ -283,6 +293,8 @@ int main()
     // positions of the point lights
     //面剔除
 //    glEnable(GL_CULL_FACE);
+    //Gamma校正
+//    glEnable(GL_FRAMEBUFFER_SRGB);
 
     glm::vec3 pointLightPositions[] = {
             glm::vec3( 0.7f,  0.2f,  302.0f),
@@ -294,10 +306,11 @@ int main()
     ourShader.use(); // 不要忘记在设置uniform变量之前激活着色器程序！
     ourShader.setInt("material.baseColorTexture", 0); // 或者使用着色器类设置
     ourShader.setInt("metallicRoughnessTexture", 1);
-    ourShader.setInt("normalTexture", 2);
+    ourShader.setInt("material.normalTexture", 2);
 
     screenShader.use();
     screenShader.setInt("screenTexture",0);
+    screenShader.setInt("bloomBlur",1);
 
 
 
@@ -308,18 +321,28 @@ int main()
     unsigned int framebuffer;
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    // 生成纹理
-    unsigned int texColorBuffer;
-    glGenTextures(1, &texColorBuffer);
-    glBindTexture(GL_TEXTURE_2D, texColorBuffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);//区别:给纹理的data参数传递了NULL
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    // 将它附加到当前绑定的帧缓冲对象
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texColorBuffer, 0);
-
+    // 生成纹理 2
+    GLuint colorBuffers[2];
+    glGenTextures(2, colorBuffers);
+    for (GLuint i = 0; i < 2; i++)
+    {
+        glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
+        glTexImage2D(
+                GL_TEXTURE_2D, 0, GL_RGB16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL
+        );
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        // attach texture to framebuffer
+        // 将它附加到当前绑定的帧缓冲对象
+        glFramebufferTexture2D(
+                GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, colorBuffers[i], 0
+        );
+    }
+    //显式告知通过glDrawBuffers渲染到多个颜色缓冲
+    GLuint attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+    glDrawBuffers(2, attachments);
 
     //创建一个渲染缓冲对象
     unsigned int rbo;
@@ -329,6 +352,30 @@ int main()
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
     //将渲染缓冲对象附加到帧缓冲的深度和模板附件上
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+
+    //两个基本的帧缓冲，每个只有一个颜色缓冲纹理 高斯模糊
+    GLuint pingpongFBO[2];
+    GLuint pingpongBuffer[2];
+    glGenFramebuffers(2, pingpongFBO);
+    glGenTextures(2, pingpongBuffer);
+    for (GLuint i = 0; i < 2; i++)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
+        glBindTexture(GL_TEXTURE_2D, pingpongBuffer[i]);
+        glTexImage2D(
+                GL_TEXTURE_2D, 0, GL_RGB16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL
+        );
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(
+                GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongBuffer[i], 0
+        );
+    }
+
+
 
     //检查帧缓冲是否完整
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -374,7 +421,7 @@ int main()
         //激活链接程序，激活着色器
         ourShader.use();
         ourShader.setVec3("viewPos", camera.Position);
-
+        ourShader.setBool("blinn",blinn);
 
         //材质
         ourShader.setVec3("material.ambient",  1.0f, 1.0f, 1.0f);
@@ -389,7 +436,7 @@ int main()
            by using 'Uniform buffer objects', but that is something we'll discuss in the 'Advanced GLSL' tutorial.
         */
         // directional light
-        ourShader.setVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
+        ourShader.setVec3("dirLight.direction", 0.0f, -1.0f, -1.3f);
         ourShader.setVec3("dirLight.ambient", 0.05f, 0.05f, 0.05f);
         ourShader.setVec3("dirLight.diffuse", 0.4f, 0.4f, 0.4f);
         ourShader.setVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
@@ -399,24 +446,24 @@ int main()
         ourShader.setVec3("pointLights[0].diffuse", 0.8f, 0.8f, 0.8f);
         ourShader.setVec3("pointLights[0].specular", 1.0f, 1.0f, 1.0f);
         ourShader.setFloat("pointLights[0].constant", 1.0f);
-        ourShader.setFloat("pointLights[0].linear", 0.09);
-        ourShader.setFloat("pointLights[0].quadratic", 0.032);
+        ourShader.setFloat("pointLights[0].linear", 	0.027);
+        ourShader.setFloat("pointLights[0].quadratic", 0.0028);
         // point light 2
         ourShader.setVec3("pointLights[1].position", pointLightPositions[1]);
         ourShader.setVec3("pointLights[1].ambient", 0.05f, 0.05f, 0.05f);
         ourShader.setVec3("pointLights[1].diffuse", 0.8f, 0.8f, 0.8f);
         ourShader.setVec3("pointLights[1].specular", 1.0f, 1.0f, 1.0f);
         ourShader.setFloat("pointLights[1].constant", 1.0f);
-        ourShader.setFloat("pointLights[1].linear", 0.09);
-        ourShader.setFloat("pointLights[1].quadratic", 0.032);
+        ourShader.setFloat("pointLights[1].linear", 0.027);
+        ourShader.setFloat("pointLights[1].quadratic", 0.0028);
         // point light 3
         ourShader.setVec3("pointLights[2].position", pointLightPositions[2]);
         ourShader.setVec3("pointLights[2].ambient", 0.05f, 0.05f, 0.05f);
         ourShader.setVec3("pointLights[2].diffuse", 0.8f, 0.8f, 0.8f);
         ourShader.setVec3("pointLights[2].specular", 1.0f, 1.0f, 1.0f);
         ourShader.setFloat("pointLights[2].constant", 1.0f);
-        ourShader.setFloat("pointLights[2].linear", 0.09);
-        ourShader.setFloat("pointLights[2].quadratic", 0.032);
+        ourShader.setFloat("pointLights[2].linear", 0.027);
+        ourShader.setFloat("pointLights[2].quadratic", 0.0028);
 
         // spotLight
         ourShader.setVec3("spotLight.position", camera.Position);
@@ -441,7 +488,7 @@ int main()
         // view/projection transformations
         // 视口，投影矩阵
         //视野(Field of View) 宽高比 第三和第四个参数设置了平截头体的近和远平面
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 3000.0f);
         glm::mat4 view = camera.GetViewMatrix();
 
         //填充Uniform缓冲
@@ -459,30 +506,65 @@ int main()
         //渲染光源
         lightCubeShader.use();
         glBindVertexArray(lightVAO);
-        for (unsigned int i = 0; i < 4; i++)
+        for (unsigned int i = 0; i < 3; i++)
         {
             //光源位置
             glm::mat4 lightModel = glm::mat4(1.0f);
             lightModel = glm::translate(lightModel,pointLightPositions[i]);
-            lightModel = glm::scale(lightModel, glm::vec3(10.2f));
+            lightModel = glm::scale(lightModel, glm::vec3(20.2f));
             lightCubeShader.setMat4("model", lightModel);
-//            glDrawArrays(GL_TRIANGLES, 0, 36);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
         }
         glBindVertexArray(0);
 
+        //floor
+        floorShader.use();
+        glBindVertexArray(planeVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        //normalDisplay
+//        normalDisplayShader.use();
+//        ourModel.Draw(normalDisplayShader);
+
         //渲染skybox
-        glDepthFunc(GL_LEQUAL);
-        skyboxShader.use();
+//        glDepthFunc(GL_LEQUAL);
+//        skyboxShader.use();
+//
+//        view =  glm::mat4(glm::mat3(camera.GetViewMatrix()));
+//        glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+//        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
+//        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+//
+//        glBindVertexArray(skyboxVAO);
+//        glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
+//        glDrawArrays(GL_TRIANGLES, 0, 36);
+//        glDepthFunc(GL_LESS);
 
-        view =  glm::mat4(glm::mat3(camera.GetViewMatrix()));
-        glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
-        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        //模糊处理
+        GLboolean horizontal = true, first_iteration = true;
+        GLuint amount = 10;
+        blurShader.use();
 
-        glBindVertexArray(skyboxVAO);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-        glDepthFunc(GL_LESS);
+
+        for (GLuint i = 0; i < amount; i++)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
+
+
+            blurShader.setBool("horizontal",horizontal);
+            // bind texture of other framebuffer (or scene if first iteration)
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(
+                    GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongBuffer[!horizontal]
+            );
+            glBindVertexArray(quadVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+            horizontal = !horizontal;
+            if (first_iteration)
+                first_iteration = false;
+        }
 
         // 第二处理阶段
         glBindFramebuffer(GL_FRAMEBUFFER, 0); // 返回默认
@@ -492,10 +574,12 @@ int main()
 
         screenShader.use();
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texColorBuffer);
+        glBindTexture(GL_TEXTURE_2D,  colorBuffers[0]);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D,  pingpongBuffer[!horizontal]);
         glBindVertexArray(quadVAO);
         glDrawArrays(GL_TRIANGLES, 0, 6);
-
+        glBindVertexArray(0);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // 检查并调用事件，交换缓冲
@@ -532,6 +616,16 @@ void processInput(GLFWwindow *window)
         camera.ProcessKeyboard(LEFT, deltaTime*100);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime*100);
+    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS && !blinnKeyPressed)
+    {
+        blinn = !blinn;
+        blinnKeyPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_RELEASE)
+    {
+        blinnKeyPressed = false;
+    }
+
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

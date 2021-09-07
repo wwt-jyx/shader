@@ -213,6 +213,7 @@ public:
         printf("primitive:%u\n",VAO);
 
 
+
         for(auto it = layouts.begin();it!=layouts.end();it++)
         {
             //POSITION
@@ -249,12 +250,17 @@ public:
                 glEnableVertexAttribArray(4);
             }
         }
+        //如果没有TANGENT 自行计算
+
+
+
         glBindVertexArray(0);
 
     }
 
     void Draw(Shader &shader)
     {
+        shader.setBool("hasNormalTex", false);
         //生成纹理
         if(material.baseColorTexture.height!=0)
         {
@@ -271,6 +277,7 @@ public:
         {
             glActiveTexture(GL_TEXTURE0+2); // 在绑定纹理之前先激活纹理单元
             glBindTexture(GL_TEXTURE_2D, material.normalTexture.texture_id);
+            shader.setBool("hasNormalTex", true);
         }
         shader.setInt("alphaMode",material.alphaMode);
 

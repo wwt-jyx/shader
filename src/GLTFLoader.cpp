@@ -40,6 +40,7 @@ void Model::collectVertexAttributes(const Value& attributes, const Value& access
         layouts.push_back(l);
     }
 
+
 }
 
 void Model::layoutFromAccessor(LayoutItem& l, const Value& accessor, const Value& bufferViews) {

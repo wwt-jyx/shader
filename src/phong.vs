@@ -16,8 +16,13 @@ layout (std140) uniform Matrices
     mat4 view;
 };
 
+out VS_OUT {
+    mat3 TBN;
+} vs_out;
+
 void main()
 {
+
     //法向量也转换为世界空间坐标
     Normal = mat3(transpose(inverse(model))) * aNormal;
 
@@ -29,4 +34,10 @@ void main()
 
     //
     gl_Position = projection * view * model * vec4(aPos, 1.0);
+
+    //TBN
+    vec3 T = normalize(mat3(transpose(inverse(model))) * aTangent);
+    vec3 N = normalize(mat3(transpose(inverse(model))) * aNormal);
+    vec3 B = normalize(cross(T, N));
+    vs_out.TBN = transpose(mat3(T, B, N));
 }
