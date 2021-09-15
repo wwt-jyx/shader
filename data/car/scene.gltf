@@ -415,11 +415,11 @@
       "name": "Object_2"
     },
     {
-      "mesh": 1,
+      "mesh": 2,
       "name": "Object_3"
     },
     {
-      "mesh": 2,
+      "mesh": 1,
       "name": "Object_4"
     }
   ],

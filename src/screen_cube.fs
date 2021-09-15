@@ -22,15 +22,19 @@ vec2 offsets[9] = vec2[](
 void main()
 {
     vec3 hdrColor = texture(screenTexture, TexCoords).rgb;
-    vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
-    hdrColor += bloomColor; // additive blending
+//     vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
+//     hdrColor += bloomColor; // additive blending
     // Reinhard色调映射
 //     vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
     // 曝光色调映射
 //     float exposure=1.0;
 //     vec3 mapped = vec3(1.0) - exp(-hdrColor * exposure);
-
     FragColor = vec4( hdrColor, 1.0);
+
+//     float depthValue = texture(screenTexture, TexCoords).r;
+//     vec4 color = vec4(vec3(depthValue), 1.0);
+//     FragColor = color;
+
 
     //gamma校正
 //     vec3 fragColor = vec3(texture(screenTexture, TexCoords));

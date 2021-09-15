@@ -100,7 +100,7 @@ void main()
         discard;
     // 属性
 //     vec3 norm = normalize(Normal);
-//     // 从法线贴图范围[0,1]获取法线
+    // 从法线贴图范围[0,1]获取法线
 //     vec3 norm = texture(material.normalTexture, TexCoord_0).rgb;
 //     // 将法线向量转换为范围[-1,1]
 //     norm = normalize(norm * 2.0 - 1.0);

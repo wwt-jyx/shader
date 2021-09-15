@@ -163,9 +163,9 @@ public:
         baseColorFactor = temp_b;
         metallicFactor = 1.0;
         roughnessFactor = 1.0;
-        baseColorTexture = NULL;
-        metallicRoughnessTexture = NULL;
-        normalTexture = NULL;
+        baseColorTexture = Texture();
+        metallicRoughnessTexture = Texture();
+        normalTexture = Texture();
         glm::vec3 temp_e(1.0,1.0,1.0);
         emissiveFactor = temp_e;
 
@@ -260,7 +260,7 @@ public:
 
     void Draw(Shader &shader)
     {
-        shader.setBool("hasNormalTex", false);
+        shader.setBool("material.hasNormalTex", false);
         //生成纹理
         if(material.baseColorTexture.height!=0)
         {
@@ -275,13 +275,13 @@ public:
         }
         if(material.normalTexture.height!=0)
         {
+//            printf("%d\n",material.normalTexture.height);
             glActiveTexture(GL_TEXTURE0+2); // 在绑定纹理之前先激活纹理单元
             glBindTexture(GL_TEXTURE_2D, material.normalTexture.texture_id);
-            shader.setBool("hasNormalTex", true);
+            shader.setBool("material.hasNormalTex", true);
         }
-        shader.setInt("alphaMode",material.alphaMode);
 
-
+        shader.setInt("material.alphaMode",material.alphaMode);
 
         // draw mesh
         // 绘制网格
@@ -289,7 +289,6 @@ public:
 //        glDrawArrays(GL_TRIANGLES, 0, vertex_pos.size());
         glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
-
         // always good practice to set everything back to defaults once configured.
 //        glActiveTexture(GL_TEXTURE0);
     }

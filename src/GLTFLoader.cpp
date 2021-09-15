@@ -337,7 +337,22 @@ void Model::loadModel(string const &path){
                     format = GL_RGBA;
                 //绑定
                 glBindTexture(GL_TEXTURE_2D, texture);
-                glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+                if (int n = img_path.find("baseColor") != string::npos)  //gamma
+                {
+                    if(nrChannels == 4)
+                    {
+                        glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB_ALPHA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+                        printf("yes\n");
+                    }
+
+                    else
+                        glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+                }
+
+                else
+                    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+
                 glGenerateMipmap(GL_TEXTURE_2D);
 
                 //samplers

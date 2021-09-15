@@ -15,6 +15,35 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
 unsigned int loadCubemap(vector<std::string> faces);
+unsigned int load2Dmap(std::string path);
+void renderCube();
+void renderQuad();
+// renders the 3D scene
+// --------------------
+void renderScene(const Shader &shader)
+{
+    // floor
+    glm::mat4 model = glm::mat4(1.0f);
+    shader.setMat4("model", model);
+    // cubes
+    model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(0.0f, 1.5f, 0.0));
+    model = glm::scale(model, glm::vec3(0.5f));
+    shader.setMat4("model", model);
+    renderCube();
+    model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(2.0f, 0.0f, 1.0));
+    model = glm::scale(model, glm::vec3(0.5f));
+    shader.setMat4("model", model);
+    renderCube();
+    model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(-1.0f, 0.0f, 2.0));
+    model = glm::rotate(model, glm::radians(60.0f), glm::normalize(glm::vec3(1.0, 0.0, 1.0)));
+    model = glm::scale(model, glm::vec3(0.25));
+    shader.setMat4("model", model);
+    renderCube();
+}
+
 // settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -85,7 +114,7 @@ int main()
 
     // build and compile shaders
     // -------------------------
-    Shader ourShader("../../src/phong.vs", "../../src/phong.fs");
+    Shader ourShader("../../src/PBR.vs", "../../src/PBR_IBL.fs");
         // load models
     // -----------
     Model ourModel("../../data/car/scene.gltf");
@@ -102,6 +131,16 @@ int main()
     Shader floorShader("../../src/floor.vs", "../../src/floor.fs");
     //blurShader
     Shader blurShader("../../src/GaussianBlur.vs", "../../src/GaussianBlur.fs");
+    //equirectangularToCubemapShader
+    Shader equirectangularToCubemapShader("../../src/cubemap.vs","../../src/equirectangular_to_cubemap.fs");
+    //irradianceShader
+    Shader irradianceShader("../../src/cubemap.vs","../../src/irradiance_convolution.fs");
+    //prefilterShader
+    Shader prefilterShader("../../src/cubemap.vs","../../src/prefilter.fs");
+    //brdfShader
+    Shader brdfShader("../../src/brdf.vs","../../src/brdf.fs");
+    //simpleDepthShader
+    Shader simpleDepthShader("../../src/shadow_mapping_depth.vs","../../src/shadow_mapping_depth.fs");
 
 
     //Uniform块设置绑定点
@@ -284,7 +323,8 @@ int main()
         "front.jpg",
         "back.jpg"
     };
-    unsigned int skyboxTexture = loadCubemap(faces);
+//    unsigned int skyboxTexture = loadCubemap(faces);
+    unsigned int brdfTexture = load2Dmap("../../data/ibl_brdf.png");
 
 
     // draw in wireframe
@@ -295,22 +335,24 @@ int main()
 //    glEnable(GL_CULL_FACE);
     //Gamma校正
 //    glEnable(GL_FRAMEBUFFER_SRGB);
-
-    glm::vec3 pointLightPositions[] = {
-            glm::vec3( 0.7f,  0.2f,  302.0f),
-            glm::vec3( 102.3f, -3.3f, -4.0f),
-            glm::vec3(-4.0f,  252.0f, -12.0f)
+    //混合
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // lights
+    // ------
+    glm::vec3 lightPositions[] = {
+            glm::vec3(300.0f,  10.0f, 10.0f),
+            glm::vec3( 10.0f,  10.0f, 300.0f),
+            glm::vec3(10.0f, 200.0f, 10.0f),
+            glm::vec3( 10.0f, -200.0f, 10.0f),
+    };
+    glm::vec3 lightColors[] = {
+            glm::vec3(1300.0f, 1300.0f, 1300.0f),
+            glm::vec3(1300.0f, 1300.0f, 1300.0f),
+            glm::vec3(1300.0f, 1300.0f, 1300.0f),
+            glm::vec3(1300.0f, 1300.0f, 1300.0f)
     };
 
-    // 分配纹理单元
-    ourShader.use(); // 不要忘记在设置uniform变量之前激活着色器程序！
-    ourShader.setInt("material.baseColorTexture", 0); // 或者使用着色器类设置
-    ourShader.setInt("metallicRoughnessTexture", 1);
-    ourShader.setInt("material.normalTexture", 2);
-
-    screenShader.use();
-    screenShader.setInt("screenTexture",0);
-    screenShader.setInt("bloomBlur",1);
 
 
 
@@ -357,7 +399,7 @@ int main()
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
-    //两个基本的帧缓冲，每个只有一个颜色缓冲纹理 高斯模糊
+    /////////两个基本的帧缓冲，每个只有一个颜色缓冲纹理 高斯模糊
     GLuint pingpongFBO[2];
     GLuint pingpongBuffer[2];
     glGenFramebuffers(2, pingpongFBO);
@@ -378,9 +420,261 @@ int main()
         );
     }
 
+    ////////////将等距柱状 2D 纹理捕捉到立方体贴图的面上
+    unsigned int captureFBO;
+    glGenFramebuffers(1, &captureFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+
+    unsigned int captureRBO;
+    glGenRenderbuffers(1, &captureRBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, captureRBO);
+
+    //加载辐射度 HDR 图像
+    int width, height, nrComponents;
+    float *data = stbi_loadf("../../data/Walk_Of_Fame/Mans_Outside_2k.hdr", &width, &height, &nrComponents, 0);
+    unsigned int hdrTexture;
+    if (data)
+    {
+        glGenTextures(1, &hdrTexture);
+        glBindTexture(GL_TEXTURE_2D, hdrTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, data);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        stbi_image_free(data);
+    }
+    else
+    {
+        std::cout << "Failed to load HDR image." << std::endl;
+    }
+    //立方体贴图
+    unsigned int envCubemap;
+    glGenTextures(1, &envCubemap);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
+    for (unsigned int i = 0; i < 6; ++i)
+    {
+        // note that we store each face with 16 bit floating point values
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F,
+                     512, 512, 0, GL_RGB, GL_FLOAT, nullptr);
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // pbr: set up projection and view matrices for capturing data onto the 6 cubemap face directions
+    // ----------------------------------------------------------------------------------------------
+    glm::mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
+    glm::mat4 captureViews[] =
+            {
+                    glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+                    glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+                    glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)),
+                    glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)),
+                    glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)),
+                    glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))
+            };
+
+    // pbr: convert HDR equirectangular environment map to cubemap equivalent
+    // ----------------------------------------------------------------------
+    equirectangularToCubemapShader.use();
+    equirectangularToCubemapShader.setInt("equirectangularMap", 0);
+    equirectangularToCubemapShader.setMat4("projection", captureProjection);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, hdrTexture);
+
+    glViewport(0, 0, 512, 512); // don't forget to configure the viewport to the capture dimensions.
+    glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+    for (unsigned int i = 0; i < 6; ++i)
+    {
+        equirectangularToCubemapShader.setMat4("view", captureViews[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, envCubemap, 0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        renderCube();
+    }
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    ///////////////////////漫反射辐照度
+    unsigned int irradianceFBO;
+    glGenFramebuffers(1, &irradianceFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, irradianceFBO);
+
+    unsigned int irradianceRBO;
+    glGenRenderbuffers(1, &irradianceRBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, irradianceRBO);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 32, 32);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, irradianceRBO);
+
+    //立方体贴图
+    unsigned int irradianceMap;
+    glGenTextures(1, &irradianceMap);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceMap);
+    for (unsigned int i = 0; i < 6; ++i)
+    {
+        // note that we store each face with 16 bit floating point values
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F,
+                     32, 32, 0, GL_RGB, GL_FLOAT, nullptr);
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // pbr: convert HDR equirectangular environment map to cubemap equivalent
+    // ----------------------------------------------------------------------
+    irradianceShader.use();
+    irradianceShader.setInt("environmentMap", 0);
+    irradianceShader.setMat4("projection", captureProjection);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
+
+    glViewport(0, 0, 32, 32); // don't forget to configure the viewport to the capture dimensions.
+    glBindFramebuffer(GL_FRAMEBUFFER, irradianceFBO);
+    for (unsigned int i = 0; i < 6; ++i)
+    {
+        irradianceShader.setMat4("view", captureViews[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, irradianceMap, 0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        renderCube();
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+    ////////////////////////////////镜面反射 IBL
+    unsigned int prefilterMap;
+    glGenTextures(1, &prefilterMap);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, prefilterMap);
+    for (unsigned int i = 0; i < 6; ++i)
+    {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, 128, 128, 0, GL_RGB, GL_FLOAT, nullptr);
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+
+    prefilterShader.use();
+    prefilterShader.setInt("environmentMap", 0);
+    prefilterShader.setMat4("projection", captureProjection);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+    unsigned int maxMipLevels = 5;
+    for (unsigned int mip = 0; mip < maxMipLevels; ++mip)
+    {
+        // reisze framebuffer according to mip-level size.
+        unsigned int mipWidth  = 128 * std::pow(0.5, mip);
+        unsigned int mipHeight = 128 * std::pow(0.5, mip);
+        glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, mipWidth, mipHeight);
+        glViewport(0, 0, mipWidth, mipHeight);
+
+        float roughness = (float)mip / (float)(maxMipLevels - 1);
+        prefilterShader.setFloat("roughness", roughness);
+        for (unsigned int i = 0; i < 6; ++i)
+        {
+            prefilterShader.setMat4("view", captureViews[i]);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                   GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, prefilterMap, mip);
+
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            renderCube();
+        }
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    //////////////////////////////brdf
+    unsigned int brdfLUTTexture;
+    glGenTextures(1, &brdfLUTTexture);
+
+    // pre-allocate enough memory for the LUT texture.
+    glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, 512, 512, 0, GL_RG, GL_FLOAT, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, brdfLUTTexture, 0);
+
+    glViewport(0, 0, 512, 512);
+    brdfShader.use();
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    renderQuad();
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    ////////////////////////深度贴图
+    GLuint depthMapFBO;
+    glGenFramebuffers(1, &depthMapFBO);
+
+    const GLuint SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+
+    GLuint depthMap;
+    glGenTextures(1, &depthMap);
+    glBindTexture(GL_TEXTURE_2D, depthMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
+                 SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
 
+    glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+
+
+
+
+
+
+    // 分配纹理单元
+    ourShader.use(); // 不要忘记在设置uniform变量之前激活着色器程序！
+    ourShader.setInt("material.baseColorTexture", 0); // 或者使用着色器类设置
+    ourShader.setInt("material.metallicRoughnessTexture", 1);
+    ourShader.setInt("material.normalTexture", 2);
+    ourShader.setInt("irradianceMap",3);
+    ourShader.setInt("prefilterMap",4);
+    ourShader.setInt("brdfLUT",5);
+
+    glActiveTexture(GL_TEXTURE0 + 3);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceMap);
+    glActiveTexture(GL_TEXTURE0 + 4);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, prefilterMap);
+    glActiveTexture(GL_TEXTURE0 + 5);
+    glBindTexture(GL_TEXTURE_2D, brdfTexture); //brdfTexture brdfLUTTexture
+
+    screenShader.use();
+    screenShader.setInt("screenTexture",0);
+    screenShader.setInt("bloomBlur",1);
+
+    skyboxShader.use();
+    skyboxShader.setInt("skybox",0);
 
     // render loop
     // -----------
@@ -398,7 +692,31 @@ int main()
         // -----
         processInput(window);
 
-        //////////////////////////////////////////////////帧缓冲渲染
+//        ///////////////////////////////渲染深度贴图
+//        // 1. Render depth of scene to texture (from light's perspective)
+//        // - Get light projection/view matrix.
+//        glm::mat4 lightProjection, lightView;
+//        glm::mat4 lightSpaceMatrix;
+//        GLfloat near_plane = 0.1f, far_plane = 3000.0f;
+//        lightProjection = glm::ortho(-300.0f, 300.0f, -300.0f, 300.0f, near_plane, far_plane);
+//        // Note that if you use a perspective projection matrix you'll have to change the light
+//        // position as the current light position isn't enough to reflect the whole scene.
+//        //lightProjection = glm::perspective(45.0f, (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane);
+//        glm::vec3 lightPos(300.0f, 300.0f, 300.0f);
+//        lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+//        lightSpaceMatrix = lightProjection * lightView;
+//        // - now render scene from light's point of view
+//        simpleDepthShader.use();
+//        simpleDepthShader.setMat4("lightSpaceMatrix",lightSpaceMatrix);
+//        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+//        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+//        glClear(GL_DEPTH_BUFFER_BIT);
+//        ourModel.Draw(simpleDepthShader);
+//        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+
+        //////////////////////////////////////////////////帧缓冲渲染  渲染场景
         // 第一处理阶段(Pass)
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 //        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -409,7 +727,7 @@ int main()
         // render
         //设置清除颜色
         // ------
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClearColor(0.8f, 0.8f, 0.8f, 0.8f);
         //清空的缓冲位可能有GL_COLOR_BUFFER_BIT，GL_DEPTH_BUFFER_BIT和GL_STENCIL_BUFFER_BIT
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -421,68 +739,14 @@ int main()
         //激活链接程序，激活着色器
         ourShader.use();
         ourShader.setVec3("viewPos", camera.Position);
-        ourShader.setBool("blinn",blinn);
+//        ourShader.setBool("blinn",blinn);
 
         //材质
-        ourShader.setVec3("material.ambient",  1.0f, 1.0f, 1.0f);
-        ourShader.setVec3("material.diffuse",  1.0f, 1.0f, 1.0f);
-        ourShader.setVec3("material.specular", 1.0f, 1.0f, 1.0f);
-        ourShader.setFloat("material.shininess", 32.0f);
+//        ourShader.setVec3("material.ambient",  1.0f, 1.0f, 1.0f);
+//        ourShader.setVec3("material.diffuse",  1.0f, 1.0f, 1.0f);
+//        ourShader.setVec3("material.specular", 1.0f, 1.0f, 1.0f);
+//        ourShader.setFloat("material.shininess", 32.0f);
 
-        /*
-           Here we set all the uniforms for the 5/6 types of lights we have. We have to set them manually and index
-           the proper PointLight struct in the array to set each uniform variable. This can be done more code-friendly
-           by defining light types as classes and set their values in there, or by using a more efficient uniform approach
-           by using 'Uniform buffer objects', but that is something we'll discuss in the 'Advanced GLSL' tutorial.
-        */
-        // directional light
-        ourShader.setVec3("dirLight.direction", 0.0f, -1.0f, -1.3f);
-        ourShader.setVec3("dirLight.ambient", 0.05f, 0.05f, 0.05f);
-        ourShader.setVec3("dirLight.diffuse", 0.4f, 0.4f, 0.4f);
-        ourShader.setVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
-        // point light 1
-        ourShader.setVec3("pointLights[0].position", pointLightPositions[0]);
-        ourShader.setVec3("pointLights[0].ambient", 0.05f, 0.05f, 0.05f);
-        ourShader.setVec3("pointLights[0].diffuse", 0.8f, 0.8f, 0.8f);
-        ourShader.setVec3("pointLights[0].specular", 1.0f, 1.0f, 1.0f);
-        ourShader.setFloat("pointLights[0].constant", 1.0f);
-        ourShader.setFloat("pointLights[0].linear", 	0.027);
-        ourShader.setFloat("pointLights[0].quadratic", 0.0028);
-        // point light 2
-        ourShader.setVec3("pointLights[1].position", pointLightPositions[1]);
-        ourShader.setVec3("pointLights[1].ambient", 0.05f, 0.05f, 0.05f);
-        ourShader.setVec3("pointLights[1].diffuse", 0.8f, 0.8f, 0.8f);
-        ourShader.setVec3("pointLights[1].specular", 1.0f, 1.0f, 1.0f);
-        ourShader.setFloat("pointLights[1].constant", 1.0f);
-        ourShader.setFloat("pointLights[1].linear", 0.027);
-        ourShader.setFloat("pointLights[1].quadratic", 0.0028);
-        // point light 3
-        ourShader.setVec3("pointLights[2].position", pointLightPositions[2]);
-        ourShader.setVec3("pointLights[2].ambient", 0.05f, 0.05f, 0.05f);
-        ourShader.setVec3("pointLights[2].diffuse", 0.8f, 0.8f, 0.8f);
-        ourShader.setVec3("pointLights[2].specular", 1.0f, 1.0f, 1.0f);
-        ourShader.setFloat("pointLights[2].constant", 1.0f);
-        ourShader.setFloat("pointLights[2].linear", 0.027);
-        ourShader.setFloat("pointLights[2].quadratic", 0.0028);
-
-        // spotLight
-        ourShader.setVec3("spotLight.position", camera.Position);
-        ourShader.setVec3("spotLight.direction", camera.Front);
-        ourShader.setVec3("spotLight.ambient", 0.0f, 0.0f, 0.0f);
-        ourShader.setVec3("spotLight.diffuse", 1.0f, 1.0f, 1.0f);
-        ourShader.setVec3("spotLight.specular", 1.0f, 1.0f, 1.0f);
-        ourShader.setFloat("spotLight.constant", 1.0f);
-        ourShader.setFloat("spotLight.linear", 0.09);
-        ourShader.setFloat("spotLight.quadratic", 0.032);
-        ourShader.setFloat("spotLight.cutOff", glm::cos(glm::radians(12.5f)));
-        ourShader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(15.0f)));
-
-        //hemisphereLight
-        ourShader.setVec3("hemisphereLight.skyColor",  1.0f, 1.0f, 1.0f);
-        ourShader.setVec3("hemisphereLight.groundColor", 0.0f, 0.0f, 0.0f);
-        ourShader.setFloat("hemisphereLight.skyIntensity", 0.8f);
-        ourShader.setFloat("hemisphereLight.groundIntensity", 0.2f);
-        ourShader.setVec3("hemisphereLight.direction", 0.0f, -1.0f, 0.0f);
 
 
         // view/projection transformations
@@ -498,24 +762,36 @@ int main()
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 
-        //渲染主体
-        glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
-        ourModel.Draw(ourShader);
 
         // also draw the lamp object(s)
         //渲染光源
-        lightCubeShader.use();
-        glBindVertexArray(lightVAO);
-        for (unsigned int i = 0; i < 3; i++)
+        // render light source (simply re-render sphere at light positions)
+        // this looks a bit off as we use the same shader, but it'll make their positions obvious and
+        // keeps the codeprint small
+        for (unsigned int i = 0; i < sizeof(lightPositions) / sizeof(lightPositions[0]); ++i)
         {
-            //光源位置
-            glm::mat4 lightModel = glm::mat4(1.0f);
-            lightModel = glm::translate(lightModel,pointLightPositions[i]);
-            lightModel = glm::scale(lightModel, glm::vec3(20.2f));
-            lightCubeShader.setMat4("model", lightModel);
-            glDrawArrays(GL_TRIANGLES, 0, 36);
+            ourShader.use();
+            glm::vec3 newPos = lightPositions[i];
+            ourShader.setVec3("lightPositions[" + std::to_string(i) + "]", newPos);
+            ourShader.setVec3("lightColors[" + std::to_string(i) + "]", lightColors[i]);
+
+            //
+//            lightCubeShader.use();
+//            glBindVertexArray(lightVAO);
+//            glm::mat4 lightModel = glm::mat4(1.0f);
+//            lightModel = glm::translate(lightModel,newPos);
+//            lightModel = glm::scale(lightModel, glm::vec3(20.2f));
+//            lightCubeShader.setMat4("model", lightModel);
+//            glDrawArrays(GL_TRIANGLES, 0, 36);
+
         }
-        glBindVertexArray(0);
+
+
+        ourShader.use();
+        //渲染主体
+//        glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
+        ourModel.Draw(ourShader);
+
 
         //floor
         floorShader.use();
@@ -537,7 +813,9 @@ int main()
 //        glBindBuffer(GL_UNIFORM_BUFFER, 0);
 //
 //        glBindVertexArray(skyboxVAO);
-//        glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
+//        glActiveTexture(GL_TEXTURE0);
+////        glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceMap);
+//        glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
 //        glDrawArrays(GL_TRIANGLES, 0, 36);
 //        glDepthFunc(GL_LESS);
 
@@ -574,7 +852,7 @@ int main()
 
         screenShader.use();
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D,  colorBuffers[0]);
+        glBindTexture(GL_TEXTURE_2D,  colorBuffers[0]); //brdfLUTTexture brdfTexture colorBuffers[0] depthMap
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D,  pingpongBuffer[!horizontal]);
         glBindVertexArray(quadVAO);
@@ -645,6 +923,23 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 // -------------------------------------------------------
 void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 {
+//    float xoffset = 0.0;
+//    float yoffset = 0.0;
+//    if (glfwGetKey(window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS)
+//    {
+//        lastX = xpos;
+//        lastY = ypos;
+//        firstMouse = false;
+//        printf("ok/n\n");
+//    }
+//    if ((glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_RELEASE)&&(!firstMouse))
+//    {
+//    xoffset = xpos - lastX;
+//    yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
+//        firstMouse = true;
+//    }
+
+
     if (firstMouse)
     {
         lastX = xpos;
@@ -700,4 +995,141 @@ unsigned int loadCubemap(vector<std::string> faces)
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
     return textureID;
+}
+
+unsigned int load2Dmap(std::string path)
+{
+    int width, height, nrChannels;
+    unsigned char *data = stbi_load(path.c_str(), &width, &height, &nrChannels, 0);
+
+    if(!data)
+        std::cout << "Texture failed to load at path: " << path << std::endl;
+
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+
+    GLenum format;
+    if (nrChannels == 1)
+        format = GL_RED;
+    else if (nrChannels == 3)
+        format = GL_RGB;
+    else if (nrChannels == 4)
+        format = GL_RGBA;
+    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    stbi_image_free(data);
+
+    return textureID;
+}
+
+// renderCube() renders a 1x1 3D cube in NDC.
+// -------------------------------------------------
+unsigned int cubeVAO = 0;
+unsigned int cubeVBO = 0;
+void renderCube()
+{
+    // initialize (if necessary)
+    if (cubeVAO == 0)
+    {
+        float vertices[] = {
+                // back face
+                -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+                1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+                1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right
+                1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+                -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+                -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
+                // front face
+                -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
+                1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f, // bottom-right
+                1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
+                1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
+                -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f, // top-left
+                -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
+                // left face
+                -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+                -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-left
+                -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+                -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+                -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+                -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+                // right face
+                1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+                1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+                1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-right
+                1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+                1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+                1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-left
+                // bottom face
+                -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+                1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 1.0f, // top-left
+                1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+                1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+                -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+                -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+                // top face
+                -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+                1.0f,  1.0f , 1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+                1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f, // top-right
+                1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+                -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+                -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f  // bottom-left
+        };
+        glGenVertexArrays(1, &cubeVAO);
+        glGenBuffers(1, &cubeVBO);
+        // fill buffer
+        glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+        // link vertex attributes
+        glBindVertexArray(cubeVAO);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+    }
+    // render Cube
+    glBindVertexArray(cubeVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+    glBindVertexArray(0);
+}
+
+// renderQuad() renders a 1x1 XY quad in NDC
+// -----------------------------------------
+unsigned int quadVAO = 0;
+unsigned int quadVBO;
+void renderQuad()
+{
+    if (quadVAO == 0)
+    {
+        float quadVertices[] = {
+                // positions        // texture Coords
+                -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+                -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+                1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+                1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+        };
+        // setup plane VAO
+        glGenVertexArrays(1, &quadVAO);
+        glGenBuffers(1, &quadVBO);
+        glBindVertexArray(quadVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    }
+    glBindVertexArray(quadVAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(0);
 }
