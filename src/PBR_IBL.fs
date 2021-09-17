@@ -8,6 +8,8 @@ in vec2 TexCoord_0;
 in vec3 WorldPos;
 in vec3 Normal;
 in vec3 Tangent;
+in vec4 FragPosLightSpace;
+
 // material parameters
 uniform vec3 albedo;
 uniform float metallic;
@@ -25,6 +27,7 @@ struct Material {
 uniform Material material;
 
 
+
 // lights
 uniform vec3 lightPositions[4];
 uniform vec3 lightColors[4];
@@ -33,9 +36,40 @@ uniform samplerCube irradianceMap;
 uniform samplerCube prefilterMap;
 uniform sampler2D   brdfLUT;
 
+uniform sampler2D shadowMap;
+
 uniform vec3 viewPos;
 
 const float PI = 3.14159265359;
+float ShadowCalculation(vec4 fragPosLightSpace)
+{
+    // 执行透视除法
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    // 变换到[0,1]的范围
+    projCoords = projCoords * 0.5 + 0.5;
+    // 取得最近点的深度(使用[0,1]范围下的fragPosLight当坐标)
+    float closestDepth = texture(shadowMap, projCoords.xy).r;
+    // 取得当前片段在光源视角下的深度
+    float currentDepth = projCoords.z;
+    // 检查当前片段是否在阴影中
+    float bias = 0.005;
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    for(int x = -1; x <= 1; ++x)
+    {
+        for(int y = -1; y <= 1; ++y)
+        {
+            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0;
+    if(projCoords.z > 1.0)
+            shadow = 0.0;
+
+
+    return shadow;
+}
 // ----------------------------------------------------------------------------
 // Easy trick to get tangent-normals to world-space to keep PBR code simplified.
 // Don't worry if you don't get what's going on; you generally want to do normal
@@ -187,8 +221,10 @@ void main()
     vec2 envBRDF  = texture(brdfLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
     vec3 specular = prefilteredColor * (kS * envBRDF.x + envBRDF.y);
 
+    float shadow = ShadowCalculation(FragPosLightSpace);
+
 //     vec3 color = ambient +  specular + Lo;
-vec3 color =  ambient +  specular;
+    vec3 color =  (ambient +  specular) * (1.0 - shadow*0.5);
 
     //HDR tonemapping
     color = color / (color + vec3(1.0));

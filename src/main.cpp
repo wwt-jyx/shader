@@ -9,7 +9,7 @@
 #include "GLTFLoader.h"
 
 #include <iostream>
-
+#include <random>
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -18,30 +18,9 @@ unsigned int loadCubemap(vector<std::string> faces);
 unsigned int load2Dmap(std::string path);
 void renderCube();
 void renderQuad();
-// renders the 3D scene
-// --------------------
-void renderScene(const Shader &shader)
+GLfloat lerp(GLfloat a, GLfloat b, GLfloat f)
 {
-    // floor
-    glm::mat4 model = glm::mat4(1.0f);
-    shader.setMat4("model", model);
-    // cubes
-    model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(0.0f, 1.5f, 0.0));
-    model = glm::scale(model, glm::vec3(0.5f));
-    shader.setMat4("model", model);
-    renderCube();
-    model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(2.0f, 0.0f, 1.0));
-    model = glm::scale(model, glm::vec3(0.5f));
-    shader.setMat4("model", model);
-    renderCube();
-    model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(-1.0f, 0.0f, 2.0));
-    model = glm::rotate(model, glm::radians(60.0f), glm::normalize(glm::vec3(1.0, 0.0, 1.0)));
-    model = glm::scale(model, glm::vec3(0.25));
-    shader.setMat4("model", model);
-    renderCube();
+    return a + f * (b - a);
 }
 
 // settings
@@ -141,7 +120,10 @@ int main()
     Shader brdfShader("../../src/brdf.vs","../../src/brdf.fs");
     //simpleDepthShader
     Shader simpleDepthShader("../../src/shadow_mapping_depth.vs","../../src/shadow_mapping_depth.fs");
-
+    //gBufferShader
+    Shader gBufferShader("../../src/gBuffer.vs","../../src/gBuffer.fs");
+    //ssaoShader
+    Shader ssaoShader("../../src/ssao.vs","../../src/ssao.fs");
 
     //Uniform块设置绑定点
     unsigned int uniformBlockIndexLight   = glGetUniformBlockIndex(lightCubeShader.ID, "Matrices");
@@ -206,14 +188,14 @@ int main()
             -0.5f,  0.5f, -0.5f,
     };
     float planeVertices[] = {
-            // positions          // texture Coords
-            2005.0f, -0.5f,  2005.0f,  2.0f, 0.0f,
-            -2005.0f, -0.5f,  2005.0f,  0.0f, 0.0f,
-            -2005.0f, -0.5f, -2005.0f,  0.0f, 2.0f,
+            // Positions          // Normals         // Texture Coords
+            2500.0f, -0.005f, 2500.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+            -2500.0f, -0.005f, -2500.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+            -2500.0f, -0.005f, 2500.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
 
-            2005.0f, -0.5f,  2005.0f,  2.0f, 0.0f,
-            -2005.0f, -0.5f, -2005.0f,  0.0f, 2.0f,
-            2005.0f, -0.5f, -2005.0f,  2.0f, 2.0f
+            2500.0f, -0.005f, 2500.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+            2500.0f, -0.005f, -2500.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+            - 2500.0f, -0.005f, -2500.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f
     };
     float quadVertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
             // positions   // texCoords
@@ -287,9 +269,12 @@ int main()
     glBindBuffer(GL_ARRAY_BUFFER, planeVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(planeVertices), &planeVertices, GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
+    glBindVertexArray(0);
     // screen quad VAO
     unsigned int quadVAO, quadVBO;
     glGenVertexArrays(1, &quadVAO);
@@ -635,8 +620,10 @@ int main()
                  SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    GLfloat borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 
     glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
@@ -644,14 +631,98 @@ int main()
     glReadBuffer(GL_NONE);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+    //////////////////////////////////////////////////////gBuffer
+    GLuint gBuffer;
+    glGenFramebuffers(1, &gBuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+    GLuint gPositionDepth, gNormal, gColorSpec;
 
+// - 位置颜色深度缓冲
+    glGenTextures(1, &gPositionDepth);
+    glBindTexture(GL_TEXTURE_2D, gPositionDepth);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPositionDepth, 0);
 
+// - 法线颜色缓冲
+    glGenTextures(1, &gNormal);
+    glBindTexture(GL_TEXTURE_2D, gNormal);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
+
+// - 颜色 + 镜面颜色缓冲
+    glGenTextures(1, &gColorSpec);
+    glBindTexture(GL_TEXTURE_2D, gColorSpec);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gColorSpec, 0);
+
+// - 告诉OpenGL我们将要使用(帧缓冲的)哪种颜色附件来进行渲染
+    GLuint g_attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+    glDrawBuffers(3, g_attachments);
     glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
 
+    // - Create and attach depth buffer (renderbuffer)
+    GLuint rboDepth;
+    glGenRenderbuffers(1, &rboDepth);
+    glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+    // - Finally check if framebuffer is complete
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "GBuffer Framebuffer not complete!" << std::endl;
 
 
+    ///////////////////////////////////ssao
+    GLuint ssaoFBO;
+    glGenFramebuffers(1, &ssaoFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+    GLuint ssaoColorBuffer;
 
+    glGenTextures(1, &ssaoColorBuffer);
+    glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBuffer, 0);
 
+    // Sample kernel  半圆的64采样向量kernel
+    std::uniform_real_distribution<GLfloat> randomFloats(0.0, 1.0); // generates random floats between 0.0 and 1.0
+    std::default_random_engine generator;
+    std::vector<glm::vec3> ssaoKernel;
+    for (GLuint i = 0; i < 64; ++i)
+    {
+        glm::vec3 sample(randomFloats(generator) * 2.0 - 1.0, randomFloats(generator) * 2.0 - 1.0, randomFloats(generator));
+        sample = glm::normalize(sample);
+        sample *= randomFloats(generator);
+        GLfloat scale = GLfloat(i) / 64.0;
+
+        // Scale samples s.t. they're more aligned to center of kernel
+        scale = lerp(0.1f, 1.0f, scale * scale);
+        sample *= scale;
+        ssaoKernel.push_back(sample);
+    }
+
+    // Noise texture 4x4纹理REPEAT平铺
+    std::vector<glm::vec3> ssaoNoise;
+    for (GLuint i = 0; i < 16; i++)
+    {
+        glm::vec3 noise(randomFloats(generator) * 2.0 - 1.0, randomFloats(generator) * 2.0 - 1.0, 0.0f); // rotate around z-axis (in tangent space)
+        ssaoNoise.push_back(noise);
+    }
+    GLuint noiseTexture; glGenTextures(1, &noiseTexture);
+    glBindTexture(GL_TEXTURE_2D, noiseTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
     // 分配纹理单元
     ourShader.use(); // 不要忘记在设置uniform变量之前激活着色器程序！
@@ -661,6 +732,7 @@ int main()
     ourShader.setInt("irradianceMap",3);
     ourShader.setInt("prefilterMap",4);
     ourShader.setInt("brdfLUT",5);
+    ourShader.setInt("shadowMap",6);
 
     glActiveTexture(GL_TEXTURE0 + 3);
     glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceMap);
@@ -669,12 +741,22 @@ int main()
     glActiveTexture(GL_TEXTURE0 + 5);
     glBindTexture(GL_TEXTURE_2D, brdfTexture); //brdfTexture brdfLUTTexture
 
+
     screenShader.use();
     screenShader.setInt("screenTexture",0);
     screenShader.setInt("bloomBlur",1);
 
     skyboxShader.use();
     skyboxShader.setInt("skybox",0);
+
+    floorShader.use();
+    floorShader.setInt("shadowMap",0);
+
+    gBufferShader.use();
+    gBufferShader.setInt("material.baseColorTexture", 0); // 或者使用着色器类设置
+    gBufferShader.setInt("material.metallicRoughnessTexture", 1);
+    gBufferShader.setInt("material.normalTexture", 2);
+
 
     // render loop
     // -----------
@@ -692,29 +774,39 @@ int main()
         // -----
         processInput(window);
 
-//        ///////////////////////////////渲染深度贴图
-//        // 1. Render depth of scene to texture (from light's perspective)
-//        // - Get light projection/view matrix.
-//        glm::mat4 lightProjection, lightView;
-//        glm::mat4 lightSpaceMatrix;
-//        GLfloat near_plane = 0.1f, far_plane = 3000.0f;
-//        lightProjection = glm::ortho(-300.0f, 300.0f, -300.0f, 300.0f, near_plane, far_plane);
-//        // Note that if you use a perspective projection matrix you'll have to change the light
-//        // position as the current light position isn't enough to reflect the whole scene.
-//        //lightProjection = glm::perspective(45.0f, (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane);
-//        glm::vec3 lightPos(300.0f, 300.0f, 300.0f);
-//        lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
-//        lightSpaceMatrix = lightProjection * lightView;
-//        // - now render scene from light's point of view
-//        simpleDepthShader.use();
-//        simpleDepthShader.setMat4("lightSpaceMatrix",lightSpaceMatrix);
-//        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-//        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-//        glClear(GL_DEPTH_BUFFER_BIT);
-//        ourModel.Draw(simpleDepthShader);
-//        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        ///////////////////////////////渲染深度贴图
+        // 1. Render depth of scene to texture (from light's perspective)
+        // - Get light projection/view matrix.
+        glm::mat4 lightProjection, lightView;
+        glm::mat4 lightSpaceMatrix;
+        GLfloat near_plane = 0.1f, far_plane = 3000.0f;
+        lightProjection = glm::ortho(-300.0f, 300.0f, -300.0f, 300.0f, near_plane, far_plane);
+        // Note that if you use a perspective projection matrix you'll have to change the light
+        // position as the current light position isn't enough to reflect the whole scene.
+//        lightProjection = glm::perspective(glm::radians(90.0f), (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane);
+        glm::vec3 lightPos(00.0f, 300.0f, 00.0f);
+        lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 0.0, -1.0));
+        lightSpaceMatrix = lightProjection * lightView;
+        // - now render scene from light's point of view
+        simpleDepthShader.use();
+        simpleDepthShader.setMat4("lightSpaceMatrix",lightSpaceMatrix);
+        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+        glEnable(GL_DEPTH_TEST);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        ourModel.Draw(simpleDepthShader);
+        glBindVertexArray(planeVAO);
+        simpleDepthShader.setMat4("model",glm::mat4(1.0));
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
+
+
+
+        glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
 
         //////////////////////////////////////////////////帧缓冲渲染  渲染场景
         // 第一处理阶段(Pass)
@@ -727,7 +819,7 @@ int main()
         // render
         //设置清除颜色
         // ------
-        glClearColor(0.8f, 0.8f, 0.8f, 0.8f);
+        glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
         //清空的缓冲位可能有GL_COLOR_BUFFER_BIT，GL_DEPTH_BUFFER_BIT和GL_STENCIL_BUFFER_BIT
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -738,6 +830,7 @@ int main()
         // be sure to activate shader when setting uniforms/drawing objects
         //激活链接程序，激活着色器
         ourShader.use();
+        ourShader.setMat4("lightSpaceMatrix",lightSpaceMatrix);
         ourShader.setVec3("viewPos", camera.Position);
 //        ourShader.setBool("blinn",blinn);
 
@@ -786,15 +879,18 @@ int main()
 
         }
 
-
         ourShader.use();
+        glActiveTexture(GL_TEXTURE0 + 6);
+        glBindTexture(GL_TEXTURE_2D, depthMap); //brdfTexture brdfLUTTexture
         //渲染主体
 //        glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
         ourModel.Draw(ourShader);
 
-
         //floor
         floorShader.use();
+        floorShader.setMat4("lightSpaceMatrix",lightSpaceMatrix);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
         glBindVertexArray(planeVAO);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glBindVertexArray(0);
@@ -844,6 +940,39 @@ int main()
                 first_iteration = false;
         }
 
+        ///////////////////////////////////////g-buffer渲染
+        glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+        glEnable(GL_DEPTH_TEST);
+        glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        gBufferShader.use();
+        gBufferShader.setFloat("near_plane",near_plane);
+        gBufferShader.setFloat("far_plane",far_plane);
+        ourModel.Draw(gBufferShader);
+        glBindVertexArray(planeVAO);
+        gBufferShader.setMat4("model",glm::mat4(1.0));
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+//        //////////////////SSAO渲染
+//        glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+//        glClear(GL_COLOR_BUFFER_BIT);
+//        shaderSSAO.Use();
+//        glActiveTexture(GL_TEXTURE0);
+//        glBindTexture(GL_TEXTURE_2D, gPositionDepth);
+//        glActiveTexture(GL_TEXTURE1);
+//        glBindTexture(GL_TEXTURE_2D, gNormal);
+//        glActiveTexture(GL_TEXTURE2);
+//        glBindTexture(GL_TEXTURE_2D, noiseTexture);
+//        SendKernelSamplesToShader();
+//        glUniformMatrix4fv(projLocation, 1, GL_FALSE, glm::value_ptr(projection));
+//        RenderQuad();
+//        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
         // 第二处理阶段
         glBindFramebuffer(GL_FRAMEBUFFER, 0); // 返回默认
         glDisable(GL_DEPTH_TEST);
@@ -851,8 +980,10 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT);
 
         screenShader.use();
+        screenShader.setFloat("near_plane",near_plane);
+        screenShader.setFloat("far_plane",far_plane);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D,  colorBuffers[0]); //brdfLUTTexture brdfTexture colorBuffers[0] depthMap
+        glBindTexture(GL_TEXTURE_2D, colorBuffers[0]); //brdfLUTTexture brdfTexture colorBuffers[0] depthMap
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D,  pingpongBuffer[!horizontal]);
         glBindVertexArray(quadVAO);

@@ -9,7 +9,7 @@ out vec2 TexCoord_0;
 out vec3 WorldPos;
 out vec3 Normal;
 out vec3 Tangent;
-
+out vec4 FragPosLightSpace;
 
 layout (std140) uniform Matrices
 {
@@ -17,6 +17,7 @@ layout (std140) uniform Matrices
     mat4 view;
 };
 uniform mat4 model;
+uniform mat4 lightSpaceMatrix;
 
 void main()
 {
@@ -24,15 +25,14 @@ void main()
     TexCoord_0 = vec2(aTexCoord_0.x,1-aTexCoord_0.y);
     //世界空间中的顶点位置
     WorldPos = vec3(model * vec4(aPos, 1.0));
+    //光源空间中的顶点位置
+    FragPosLightSpace = lightSpaceMatrix * vec4(WorldPos, 1.0);
+
     //法向量也转换为世界空间坐标
     Normal =  mat3(transpose(inverse(model))) *  aNormal;
     Tangent = mat3(transpose(inverse(model))) * aTangent;
 
     gl_Position =  projection * view * vec4(WorldPos, 1.0);
 
-    //TBN
-    //vec3 T = normalize(mat3(transpose(inverse(model))) * aTangent);
-    //vec3 N = normalize(mat3(transpose(inverse(model))) * aNormal);
-    //vec3 B = normalize(cross(T, N));
-    //TBN = transpose(mat3(T, B, N));
+
 }

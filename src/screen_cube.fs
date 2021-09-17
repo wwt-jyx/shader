@@ -5,6 +5,8 @@ in vec2 TexCoords;
 
 uniform sampler2D screenTexture;
 uniform sampler2D bloomBlur;
+uniform float near_plane;
+uniform float far_plane;
 
 const float offset = 1.0 / 300.0;
 vec2 offsets[9] = vec2[](
@@ -19,6 +21,13 @@ vec2 offsets[9] = vec2[](
         vec2( offset, -offset)  // 右下
     );
 
+float LinearizeDepth(float depth)
+{
+    float z = depth * 2.0 - 1.0; // Back to NDC
+    return (2.0 * near_plane * far_plane) / (far_plane + near_plane - z * (far_plane - near_plane));
+}
+
+
 void main()
 {
     vec3 hdrColor = texture(screenTexture, TexCoords).rgb;
@@ -31,8 +40,9 @@ void main()
 //     vec3 mapped = vec3(1.0) - exp(-hdrColor * exposure);
     FragColor = vec4( hdrColor, 1.0);
 
-//     float depthValue = texture(screenTexture, TexCoords).r;
-//     vec4 color = vec4(vec3(depthValue), 1.0);
+//     float depthValue = texture(screenTexture, TexCoords).a;
+//     vec4 color = vec4(vec3(LinearizeDepth(depthValue) / far_plane), 1.0); // perspective
+//     vec4 color = vec4(vec3(depthValue), 1.0);  // orthographic
 //     FragColor = color;
 
 
