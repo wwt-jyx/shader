@@ -17,7 +17,7 @@ float ShadowCalculation(vec4 fragPosLightSpace)
     // 取得当前片段在光源视角下的深度
     float currentDepth = projCoords.z;
     // 检查当前片段是否在阴影中
-    float bias = 0.005;
+    float bias = 0.00005;
 //     float shadow = currentDepth - bias> closestDepth  ? 1.0 : 0.0;
 
     float shadow = 0.0;

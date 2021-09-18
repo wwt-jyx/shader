@@ -30,7 +30,9 @@ void main()
 {
     // Store the fragment position vector in the first gbuffer texture
     gPositionDepth.xyz = ViewPos;
-    gPositionDepth.a = LinearizeDepth(gl_FragCoord.z);
+    gPositionDepth.a = 1;
+//     gl_FragDepth = LinearizeDepth(gl_FragCoord.z)/ far_plane;
+    gl_FragDepth = gl_FragCoord.z;
 
     // Also store the per-fragment normals into the gbuffer
     gNormal = vec4(normalize(Normal),1.0);

@@ -37,6 +37,7 @@ uniform samplerCube prefilterMap;
 uniform sampler2D   brdfLUT;
 
 uniform sampler2D shadowMap;
+uniform sampler2D ssao;
 
 uniform vec3 viewPos;
 
@@ -143,10 +144,11 @@ void main()
     float metallic;
     float roughness;
     float ao;
-
+    float AmbientOcclusion;
     albedo = vec3(texture(material.baseColorTexture, TexCoord_0));
     metallic= texture(material.metallicRoughnessTexture, TexCoord_0).b;
     roughness = texture(material.metallicRoughnessTexture, TexCoord_0).g;
+    AmbientOcclusion = texture(ssao, TexCoord_0).r;
     ao = 1;
     FragColor = vec4(albedo, 1.0);
     vec3 N ;
@@ -224,7 +226,7 @@ void main()
     float shadow = ShadowCalculation(FragPosLightSpace);
 
 //     vec3 color = ambient +  specular + Lo;
-    vec3 color =  (ambient +  specular) * (1.0 - shadow*0.5);
+    vec3 color =  (ambient +  specular) * (1.0 - shadow*0.5) * AmbientOcclusion;
 
     //HDR tonemapping
     color = color / (color + vec3(1.0));

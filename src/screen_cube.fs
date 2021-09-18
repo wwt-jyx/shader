@@ -40,7 +40,7 @@ void main()
 //     vec3 mapped = vec3(1.0) - exp(-hdrColor * exposure);
     FragColor = vec4( hdrColor, 1.0);
 
-//     float depthValue = texture(screenTexture, TexCoords).a;
+//     float depthValue = texture(screenTexture, TexCoords).r;
 //     vec4 color = vec4(vec3(LinearizeDepth(depthValue) / far_plane), 1.0); // perspective
 //     vec4 color = vec4(vec3(depthValue), 1.0);  // orthographic
 //     FragColor = color;
