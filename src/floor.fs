@@ -4,6 +4,7 @@ out vec4 FragColor;
 in vec4 FragPosLightSpace;
 in vec2 TexCoord;
 uniform sampler2D shadowMap;
+
 uniform float near_plane;
 uniform float far_plane;
 float ShadowCalculation(vec4 fragPosLightSpace)

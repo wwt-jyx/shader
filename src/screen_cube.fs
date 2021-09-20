@@ -31,8 +31,9 @@ float LinearizeDepth(float depth)
 void main()
 {
     vec3 hdrColor = texture(screenTexture, TexCoords).rgb;
-//     vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
-//     hdrColor += bloomColor; // additive blending
+    vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
+//     bloomColor = texture(bloomBlur, TexCoords).aaa;
+    hdrColor += bloomColor; // additive blending
     // Reinhard色调映射
 //     vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
     // 曝光色调映射

@@ -2,7 +2,7 @@
 // #extension GL_OES_standard_derivatives : enable
 layout (location = 0) out vec4 FragColor;
 layout (location = 1) out vec4 BrightColor;
-
+layout (location = 2) out vec4 alphaMode;
 
 in vec2 TexCoord_0;
 in vec3 WorldPos;
@@ -38,10 +38,16 @@ uniform sampler2D   brdfLUT;
 
 uniform sampler2D shadowMap;
 uniform sampler2D ssao;
+uniform sampler2D oldDepth;
+uniform sampler2D oldColor;
 
 uniform vec3 viewPos;
+uniform vec2 screenSize;
+
+uniform int peel;
 
 const float PI = 3.14159265359;
+
 float ShadowCalculation(vec4 fragPosLightSpace)
 {
     // 执行透视除法
@@ -138,6 +144,13 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0)
 // ----------------------------------------------------------------------------
 void main()
 {
+    if(peel!=0)
+    {
+        float fragDepth = gl_FragCoord.z ;
+        float odepth = texture(oldDepth, gl_FragCoord.xy/screenSize).r;
+        if(fragDepth <= odepth)
+            discard;
+    }
 
 
     vec3 albedo;
@@ -148,7 +161,7 @@ void main()
     albedo = vec3(texture(material.baseColorTexture, TexCoord_0));
     metallic= texture(material.metallicRoughnessTexture, TexCoord_0).b;
     roughness = texture(material.metallicRoughnessTexture, TexCoord_0).g;
-    AmbientOcclusion = texture(ssao, TexCoord_0).r;
+    AmbientOcclusion = texture(ssao, gl_FragCoord.xy/screenSize).r;
     ao = 1;
     FragColor = vec4(albedo, 1.0);
     vec3 N ;
@@ -234,13 +247,17 @@ void main()
     color = pow(color, vec3(1.0/2.2));
 
     FragColor = vec4(color, 1.0);
-   if(material.alphaMode==2)
-        FragColor = vec4(color, 0.5);
+    alphaMode = vec4(material.alphaMode) * 0.5;
+
+
+
+
+
 
     // Check whether fragment output is higher than threshold, if so output as brightness color
     float brightness = dot(FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-    if(brightness > 1.0)
-        BrightColor = vec4(FragColor.rgb, 1.0);
+    if(brightness > 0.5)
+        BrightColor = vec4(FragColor.rgb, 0.0);
     else
         BrightColor = vec4(0.0,0.0,0.0, 1.0);
 }

@@ -56,10 +56,12 @@ void main()
         // get sample depth
         float sampleDepth = texture(shadowMap, offset.xy).r; // Get depth value of kernel sample
         float origindepth = offset.z;
+        sampleDepth = LinearizeDepth(sampleDepth) / far_plane ;
+        origindepth = LinearizeDepth(origindepth) / far_plane ;
 
-        float bias = 0.0000025;
+        float bias = 0.01;
         // range check & accumulate
-        float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleDepth ));
+        float rangeCheck = smoothstep(0.0, 1.0, radius / abs(LinearizeDepth(fragPos.z) / far_plane - sampleDepth ));
         occlusion += (sampleDepth >= (origindepth + bias)? 1.0 : 0.0) * rangeCheck;
 //          occlusion += (sampleDepth >= (origindepth + bias) ? 1.0 : 0.0);
          if(i==0) test=origindepth;
@@ -67,7 +69,7 @@ void main()
     occlusion = 1.0 - (occlusion / kernelSize);
 
 //     FragColor = vec4(occlusion,0.0,0.0,1.0);
-    FragColor = vec4(1.0,0.0,0.0,1.0);
+    FragColor = vec4(occlusion,0.0,0.0,1.0);
 //     FragColor = vec4(samples[63],1.0);
 
 //         float depthValue = texture(shadowMap, TexCoords).r;

@@ -28,5 +28,7 @@ void main()
             result += texture(image, TexCoords - vec2(0.0, tex_offset.y * i)).rgb * weight[i];
         }
     }
-    FragColor = vec4(result, 1.0);
+//     if(texture(image, TexCoords).a<=0.55)
+//         result = vec3(0.0);
+    FragColor = vec4(result, texture(image, TexCoords).a);
 }
